@@ -1,98 +1,57 @@
-from .models import MyApiUser
-from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
-from .serializers import UserSerializer
+from .serializers import LoginSerializer, MyApiUserSerializer, RegisterSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework.views import APIView
 from django.contrib.auth import authenticate
-from django.contrib.auth.hashers import make_password
 from django.contrib.auth import get_user_model
+from rest_framework import generics, status
+from rest_framework.views import APIView
+from django.http import Http404
+from .models import MyApiUser
 
-@api_view(['POST'])
-def create_user(request):
-    serializer = UserSerializer(data=request.data)
-    if serializer.is_valid():
-        # Hash the password before saving
-        serializer.validated_data['password'] = make_password(serializer.validated_data['password'])
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class UserView(APIView):
+    permission_classes = [IsAuthenticated]
 
-@api_view(['PUT'])
-@permission_classes([IsAuthenticated])
-def update_user(request, user_id):
-    try:
-        user = MyApiUser.objects.get(id=user_id)
-    except MyApiUser.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-    
-    # Ensure the user can only update their own profile
-    if request.user.id != user.id:
-        return Response({"error": "You don't have permission to update this user."}, status=status.HTTP_403_FORBIDDEN)
-    
-    serializer = UserSerializer(user, data=request.data, partial=True)
-    if serializer.is_valid():
-        # Hash the password if it's being updated
-        if 'password' in serializer.validated_data:
-            serializer.validated_data['password'] = make_password(serializer.validated_data['password'])
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['DELETE'])
-@permission_classes([IsAuthenticated])
-def delete_user(request, user_id):
-    try:
-        user = MyApiUser.objects.get(id=user_id)
-        # Ensure the user can only delete their own account
-        if request.user.id != user.id:
-            return Response({"error": "You don't have permission to delete this user."}, status=status.HTTP_403_FORBIDDEN)
-        user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    except MyApiUser.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_users(request):
-    users = MyApiUser.objects.all()
-    serializer = UserSerializer(users, many=True)
-    return Response(serializer.data)
-
-@api_view(['POST'])
-def register_user(request):
-    serializer = UserSerializer(data=request.data)
-    if serializer.is_valid():
-        # Hash the password before saving
-        serializer.validated_data['password'] = make_password(serializer.validated_data['password'])
-        serializer.save()
-        return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class CustomLoginView(APIView):
-    def post(self, request, *args, **kwargs):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        
-        user = authenticate(username=username, password=password)
-        
-        if user is None:
-            User = get_user_model()
+    def get(self, request, user_id=None):
+        if user_id:
+            # Retrieve a specific user by ID
             try:
-                user_obj = User.objects.get(username=username)
-                if not user_obj.check_password(password):
-                    print("Password mismatch")
-                if not user_obj.is_active:
-                    print("User is inactive")
-            except User.DoesNotExist:
-                print("User does not exist")
+                user = MyApiUser.objects.get(pk=user_id)
+            except MyApiUser.DoesNotExist:
+                raise Http404
+            serializer = MyApiUserSerializer(user)
+        else:
+            # Retrieve all users
+            users = MyApiUser.objects.all()
+            serializer = MyApiUserSerializer(users, many=True)
         
-        if user is not None:
-            refresh = RefreshToken.for_user(user)
-            return Response({
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-            })
-        return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response(serializer.data)
+
+    def delete(self, request, user_id):
+        # Delete a specific user by ID
+        try:
+            user = MyApiUser.objects.get(pk=user_id)
+        except MyApiUser.DoesNotExist:
+            raise Http404
+        
+        user.delete()
+        return Response({"detail": f"User {user_id} is Deleted"},status=status.HTTP_204_NO_CONTENT)
+
+class RegisterView(generics.CreateAPIView):
+    queryset = MyApiUser.objects.all()
+    serializer_class = RegisterSerializer
+
+class LoginView(generics.GenericAPIView):
+    serializer_class = LoginSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = MyApiUser.objects.get(email=serializer.data['email'])
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+        }, status=status.HTTP_200_OK)
