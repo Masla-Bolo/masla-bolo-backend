@@ -20,24 +20,30 @@ class UserView(APIView):
             try:
                 user = MyApiUser.objects.get(pk=user_id)
             except MyApiUser.DoesNotExist:
-                raise Http404
+                return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            if request.user.role != 'admin' and request.user.id != user.id:
+                return Response({"detail": "Permission denied. You can only access your own data."}, status=status.HTTP_403_FORBIDDEN)
+
             serializer = MyApiUserSerializer(user)
         else:
+            if request.user.role != 'admin':
+                return Response({"detail": "Permission denied. Only admins can access the list of users."}, status=status.HTTP_403_FORBIDDEN)
+
             users = MyApiUser.objects.all()
             serializer = MyApiUserSerializer(users, many=True)
-        
+
         return Response(serializer.data)
 
     def delete(self, request, user_id):
-        # Only Admins should be able to delete users
         if not request.user.role == 'admin':
-            return Response({"detail": "Permission denied Not Admin"}, status=status.HTTP_403_FORBIDDEN)
-        
+            return Response({"detail": "Permission denied. Not Admin."}, status=status.HTTP_403_FORBIDDEN)
+
         try:
             user = MyApiUser.objects.get(pk=user_id)
         except MyApiUser.DoesNotExist:
-            raise Http404
-        
+            return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
         user.delete()
         return Response({"detail": f"User {user_id} is deleted"}, status=status.HTTP_204_NO_CONTENT)
 
