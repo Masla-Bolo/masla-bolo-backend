@@ -9,39 +9,44 @@ from rest_framework import generics, status
 from rest_framework.views import APIView
 from django.http import Http404
 from .models import MyApiUser
+from .permissions import IsUser, IsOfficial, IsAdmin
 
+# Retrieve all users or a specific user by ID
 class UserView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, user_id=None):
         if user_id:
-            # Retrieve a specific user by ID
             try:
                 user = MyApiUser.objects.get(pk=user_id)
             except MyApiUser.DoesNotExist:
                 raise Http404
             serializer = MyApiUserSerializer(user)
         else:
-            # Retrieve all users
             users = MyApiUser.objects.all()
             serializer = MyApiUserSerializer(users, many=True)
         
         return Response(serializer.data)
 
     def delete(self, request, user_id):
-        # Delete a specific user by ID
+        # Only Admins should be able to delete users
+        if not request.user.role == 'admin':
+            return Response({"detail": "Permission denied Not Admin"}, status=status.HTTP_403_FORBIDDEN)
+        
         try:
             user = MyApiUser.objects.get(pk=user_id)
         except MyApiUser.DoesNotExist:
             raise Http404
         
         user.delete()
-        return Response({"detail": f"User {user_id} is Deleted"},status=status.HTTP_204_NO_CONTENT)
+        return Response({"detail": f"User {user_id} is deleted"}, status=status.HTTP_204_NO_CONTENT)
 
+# Register new users
 class RegisterView(generics.CreateAPIView):
     queryset = MyApiUser.objects.all()
     serializer_class = RegisterSerializer
 
+# Login view that returns JWT tokens
 class LoginView(generics.GenericAPIView):
     serializer_class = LoginSerializer
 
@@ -55,3 +60,27 @@ class LoginView(generics.GenericAPIView):
             'refresh': str(refresh),
             'access': str(refresh.access_token),
         }, status=status.HTTP_200_OK)
+
+# Issue creation accessible only by 'user' role
+class IssueCreateView(APIView):
+    permission_classes = [IsUser]
+
+    def post(self, request, *args, **kwargs):
+        # Logic for issue creation should go here
+        return Response({"message": "Issue created"}, status=status.HTTP_201_CREATED)
+
+# Issue approval accessible only by 'admin' role
+class IssueApproveView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, *args, **kwargs):
+        # Logic for issue approval should go here
+        return Response({"message": "Issue approved"}, status=status.HTTP_200_OK)
+
+# API view accessible only by 'official' role
+class OfficialView(APIView):
+    permission_classes = [IsOfficial]
+
+    def get(self, request, *args, **kwargs):
+        # Logic for officials should go here
+        return Response({"message": "Official view"}, status=status.HTTP_200_OK)

@@ -11,7 +11,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = MyApiUser.objects.create_user(
             email=validated_data['email'],
             username=validated_data['username'],
-            password=validated_data['password']
+            password=validated_data['password'],
+            role=validated_data.get('role', 'user')
         )
         return user
 
@@ -31,4 +32,4 @@ class LoginSerializer(serializers.Serializer):
 class MyApiUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = MyApiUser
-        fields = ['id', 'email', 'username', 'is_active']  # Adjust fields as necessary
+        fields = ['id', 'email', 'username', "role", 'is_active']  # Adjust fields as necessary
