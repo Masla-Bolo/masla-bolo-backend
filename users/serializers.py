@@ -1,18 +1,18 @@
 from rest_framework import serializers
-from .models import MyApiUser
+from .models import MyApiUser, Issue
 from django.contrib.auth import authenticate
 
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = MyApiUser
-        fields = ["id", 'email', "username", 'password']
+        fields = ["id", 'email', "username", 'password', 'role']
 
     def create(self, validated_data):
         user = MyApiUser.objects.create_user(
             email=validated_data['email'],
             username=validated_data['username'],
             password=validated_data['password'],
-            role=validated_data.get('role', 'user')
+            role=validated_data['role']
         )
         return user
 
@@ -33,3 +33,9 @@ class MyApiUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = MyApiUser
         fields = ['id', 'email', 'username', "role", 'is_active']  # Adjust fields as necessary
+
+class IssueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Issue
+        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status']
+        read_only_fields = ['user']  # Prevent the user from being changed once set

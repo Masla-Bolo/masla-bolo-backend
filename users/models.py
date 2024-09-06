@@ -1,8 +1,9 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.contrib.auth import get_user_model
 
 class MyApiUserManager(BaseUserManager):
-    def create_user(self, email, username, password=None, role="user"):
+    def create_user(self, email, username, role="user", password=None):
         if not email:
             raise ValueError('Users must have an email address')
         user = self.model(email=self.normalize_email(email), username=username, role=role)  # Use the passed role
@@ -11,7 +12,7 @@ class MyApiUserManager(BaseUserManager):
         return user
 
     def create_superuser(self, email, username, password):
-        user = self.create_user(email, username, password, role='admin')  # Ensure role is 'admin' for superuser
+        user = self.create_user(email, username, password=password, role='admin')  # Ensure role is 'admin' for superuser
         user.is_staff = True
         user.is_superuser = True
         user.save(using=self._db)
@@ -41,3 +42,34 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+# Issue Model
+class Issue(models.Model):
+    COMPLETED = "completed"
+    APPROVED = "approved"
+    NOT_APPROVED = "not_approved"
+
+    CATEGORY_CHOICES = [
+        ('electric', 'Electric'),
+        ('gas', 'Gas'),
+        ('sewerage', 'Sewerage'),
+        ('road', 'Road'),
+        # Add more categories as needed
+    ]
+    ISSUE_STATUS = [
+        (COMPLETED, 'Completed'),
+        (APPROVED, 'Approved'),
+        (NOT_APPROVED, 'Not_Approved'),
+    ]
+
+    title = models.CharField(max_length=255)
+    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    description = models.CharField(max_length=150)  # Limit to 150 characters
+    categories = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
+    images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
+    issue_status = models.CharField(max_length=15, choices=ISSUE_STATUS, default=NOT_APPROVED) # New field to track completion status
+
+    def __str__(self):
+        return self.title

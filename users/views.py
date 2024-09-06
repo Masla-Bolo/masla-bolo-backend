@@ -1,14 +1,13 @@
+from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from .serializers import LoginSerializer, MyApiUserSerializer, RegisterSerializer
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from .serializers import LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from rest_framework import generics, status
 from rest_framework.views import APIView
-from django.http import Http404
-from .models import MyApiUser
+from .models import MyApiUser, Issue
 from .permissions import IsUser, IsOfficial, IsAdmin
 
 # Retrieve all users or a specific user by ID
@@ -23,11 +22,13 @@ class UserView(APIView):
                 return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
             if request.user.role != 'admin' and request.user.id != user.id:
+                print(request.user.role)
                 return Response({"detail": "Permission denied. You can only access your own data."}, status=status.HTTP_403_FORBIDDEN)
 
             serializer = MyApiUserSerializer(user)
         else:
             if request.user.role != 'admin':
+                # print(request.user.role)
                 return Response({"detail": "Permission denied. Only admins can access the list of users."}, status=status.HTTP_403_FORBIDDEN)
 
             users = MyApiUser.objects.all()
@@ -68,12 +69,43 @@ class LoginView(generics.GenericAPIView):
         }, status=status.HTTP_200_OK)
 
 # Issue creation accessible only by 'user' role
-class IssueCreateView(APIView):
-    permission_classes = [IsUser]
+class IssueListCreateView(generics.ListCreateAPIView):
+    queryset = Issue.objects.all()
+    serializer_class = IssueSerializer
+    permission_classes = [IsAuthenticated, IsUser]
 
-    def post(self, request, *args, **kwargs):
-        # Logic for issue creation should go here
-        return Response({"message": "Issue created"}, status=status.HTTP_201_CREATED)
+    def perform_create(self, serializer):
+        # Automatically set the logged-in user as the creator of the issue
+        serializer.save(user=self.request.user)
+
+class IssueCompleteView(generics.UpdateAPIView):
+    queryset = Issue.objects.all()
+    serializer_class = IssueSerializer
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, *args, **kwargs):
+        issue = get_object_or_404(Issue, pk=kwargs['pk'])
+
+        # Allow completion only if the request user is the issue creator or an admin
+        if request.user == issue.user or request.user.role == MyApiUser.ADMIN:
+            issue.issue_status = "completed"
+            issue.save()
+            return Response({"message": "Issue marked as complete"}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "You do not have permission to complete this issue"}, status=status.HTTP_403_FORBIDDEN)
+
+class IssueRetrieveView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, issue_id=None):
+        if issue_id:
+            issue = get_object_or_404(Issue, pk=issue_id)
+            serializer = IssueSerializer(issue)
+            return Response(serializer.data)
+        else:
+            issues = Issue.objects.all()
+            serializer = IssueSerializer(issues, many=True)
+            return Response(serializer.data)
 
 # Issue approval accessible only by 'admin' role
 class IssueApproveView(APIView):
