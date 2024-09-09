@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 class MyApiUserManager(BaseUserManager):
     def create_user(self, email, username, role="user", password=None):
@@ -34,6 +35,8 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=USER)  # Role field
+    created_at = models.DateTimeField(default=timezone.now)  # Automatically set on creation
+    updated_at = models.DateTimeField(auto_now=True)  # Automatically update when modified
 
     objects = MyApiUserManager()
 
@@ -64,12 +67,15 @@ class Issue(models.Model):
 
     title = models.CharField(max_length=255)
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
-    latitude = models.FloatField()
-    longitude = models.FloatField()
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
     description = models.CharField(max_length=150)  # Limit to 150 characters
     categories = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
     images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
-    issue_status = models.CharField(max_length=15, choices=ISSUE_STATUS, default=NOT_APPROVED) # New field to track completion status
+    issue_status = models.CharField(max_length=15, choices=ISSUE_STATUS, default=NOT_APPROVED) # Track completion status
+    is_anonymous = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)  # Automatically set on creation
+    updated_at = models.DateTimeField(auto_now=True)  # Automatically update when modified
 
     def __str__(self):
         return self.title
