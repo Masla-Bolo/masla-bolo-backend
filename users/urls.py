@@ -1,13 +1,26 @@
 from django.urls import path
-from .views import IssueCompleteView, IssueListCreateView, IssueRetrieveView, RegisterView, LoginView, UserView
+from .views import (
+    IssueCompleteView, 
+    IssueListCreateView, 
+    IssueRetrieveView, 
+    IssueDeleteView,
+    RegisterView, 
+    LoginView, 
+    UserListView,
+    UserDeleteView,
+    UserDetailView
+)
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
-    path('users/', UserView.as_view(), name='user-list'),
-    path('users/<int:user_id>/', UserView.as_view(), name='user-detail'),
+    path('users/', UserListView.as_view(), name='user-list'),
+    path('users/<int:user_id>/', UserDetailView.as_view(), name='user-detail'),
+    path('users/<int:user_id>/delete/', UserDeleteView.as_view(), name='user-delete'),
     path('issue/create/', IssueListCreateView.as_view(), name='create_issue'),
-    path('issue/complete/<int:pk>', IssueCompleteView.as_view(), name='complete_issue'),
-    path('issue/list/', IssueRetrieveView.as_view(), name="issue-retrieval"),
+    path('issue/complete/<int:pk>/', IssueCompleteView.as_view(), name='complete_issue'),
+    path('issue/<int:issue_id>/delete/', IssueDeleteView.as_view(), name='issue-delete'),
+    path('issue/all/', IssueRetrieveView.as_view(), name="issue-retrieval"),
+    path('issue/<int:issue_id>/', IssueRetrieveView.as_view(), name="issue-detail"),  # New endpoint
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
