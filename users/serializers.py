@@ -23,19 +23,25 @@ class LoginSerializer(serializers.Serializer):
     def validate(self, data):
         email = data.get("email")
         password = data.get("password")
-        user = authenticate(username=email, password=password)
+        user = authenticate(email=email, password=password)
+
         if user is None:
             raise serializers.ValidationError("Invalid login credentials")
-        return data
+        
+        # Return the user instance, not the raw data
+        return {'user': user}
 
 # Serializer for listing user details
 class MyApiUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = MyApiUser
-        fields = ['id', 'email', 'username', "role", 'is_active']  # Adjust fields as necessary
+        fields = ['id', 'email', 'username', "role", 'is_active', 'created_at', 'updated_at']  # Include the new fields
 
 class IssueSerializer(serializers.ModelSerializer):
+    latitude = serializers.DecimalField(max_digits=9, decimal_places=6)
+    longitude = serializers.DecimalField(max_digits=9, decimal_places=6)
+
     class Meta:
         model = Issue
-        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status']
-        read_only_fields = ['user']  # Prevent the user from being changed once set
+        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'created_at', 'updated_at']  # Include the new fields
+        read_only_fields = ['user', 'created_at', 'updated_at']  # Ensure these fields are read-only
