@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.contrib.auth import get_user_model
@@ -13,7 +14,7 @@ class MyApiUserManager(BaseUserManager):
         return user
 
     def create_superuser(self, email, username, password):
-        user = self.create_user(email, username, password=password, role='admin')  # Ensure role is 'admin' for superuser
+        user = self.create_user(email, username, password=password, role=MyApiUser.ADMIN)  # Ensure role is 'admin' for superuser
         user.is_staff = True
         user.is_superuser = True
         user.save(using=self._db)
@@ -80,3 +81,11 @@ class Issue(models.Model):
 
     def __str__(self):
         return self.title
+    
+class Like(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    issue = models.ForeignKey(Issue, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'issue')  # Prevent a user from liking the same issue more than once

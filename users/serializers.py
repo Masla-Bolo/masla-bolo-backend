@@ -1,6 +1,7 @@
 from rest_framework import serializers
-from .models import MyApiUser, Issue
+from .models import MyApiUser, Issue, Like
 from django.contrib.auth import authenticate
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
@@ -47,3 +48,8 @@ class IssueSerializer(serializers.ModelSerializer):
         model = Issue
         fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", 'created_at', 'updated_at']  # Include the new fields
         read_only_fields = ['user', 'created_at', 'updated_at']  # Ensure these fields are read-only
+
+class LikeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Like
+        fields = ['user', 'issue', 'created_at']

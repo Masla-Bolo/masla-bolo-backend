@@ -1,13 +1,13 @@
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .serializers import LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer
+from .serializers import LikeSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from rest_framework import generics, status
 from rest_framework.views import APIView
-from .models import MyApiUser, Issue
+from .models import MyApiUser, Issue, Like
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
 from django.db.models import Q
@@ -198,7 +198,49 @@ class IssueApproveView(APIView):
             issue.save()
             return Response({"message": "Issue is Approved"}, status=status.HTTP_200_OK)
         else:
-            return Response({"error": "You do not have permission to complete this issue"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": "You do not have permission to complete this issue"}, status=status.HTTP_403_FORBIDDEN)
+
+class IssueLikeView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = LikeSerializer
+
+    def post(self, request, issue_id):
+        user = request.user
+        try:
+            issue = Issue.objects.get(id=issue_id)
+        except Issue.DoesNotExist:
+            return Response({"detail": "Issue not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if the user has already liked the issue
+        existing_like = Like.objects.filter(user=user, issue=issue).first()
+
+        if existing_like:
+            # Unlike the issue and decrease the like count
+            existing_like.delete()
+            issue.likes_count -= 1
+            issue.save()
+            return Response({"detail": "Like removed", "likes_count": issue.likes_count}, status=status.HTTP_200_OK)
+
+        # If no like exists, add a like and increase the like count
+        Like.objects.create(user=user, issue=issue)
+        issue.likes_count += 1
+        issue.save()
+
+        return Response({"detail": "Issue liked", "likes_count": issue.likes_count}, status=status.HTTP_201_CREATED)
+
+class LikedIssuesListView(generics.ListAPIView):
+    serializer_class = IssueSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Get the logged-in user
+        user = self.request.user
+        
+        # Get all issues liked by this user
+        liked_issues = Like.objects.filter(user=user).values_list('issue', flat=True)
+        
+        # Return the issues that match the liked ones
+        return Issue.objects.filter(id__in=liked_issues)
 
 # API view accessible only by 'official' role
 class OfficialView(APIView):
