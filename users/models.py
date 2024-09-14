@@ -74,6 +74,7 @@ class Issue(models.Model):
     images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
     issue_status = models.CharField(max_length=15, choices=ISSUE_STATUS, default=NOT_APPROVED) # Track completion status
     is_anonymous = models.BooleanField(default=False)
+    likes_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)  # Automatically set on creation
     updated_at = models.DateTimeField(auto_now=True)  # Automatically update when modified
 
