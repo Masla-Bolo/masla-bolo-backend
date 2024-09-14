@@ -3,6 +3,8 @@ from .models import MyApiUser, Issue
 from django.contrib.auth import authenticate
 
 class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=True)
+
     class Meta:
         model = MyApiUser
         fields = ["id", 'email', "username", 'password', 'role']
@@ -43,5 +45,5 @@ class IssueSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Issue
-        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'created_at', 'updated_at']  # Include the new fields
+        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", 'created_at', 'updated_at']  # Include the new fields
         read_only_fields = ['user', 'created_at', 'updated_at']  # Ensure these fields are read-only

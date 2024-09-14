@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from .models import MyApiUser, Issue
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
+from django.db.models import Q
 
 # List all users (Admin only)
 class UserListView(APIView):
@@ -64,6 +65,19 @@ class RegisterView(generics.CreateAPIView):
     queryset = MyApiUser.objects.all()
     serializer_class = RegisterSerializer
 
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'user': serializer.data,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 # Login view that returns JWT tokens
 class LoginView(generics.GenericAPIView):
     serializer_class = LoginSerializer
@@ -88,9 +102,35 @@ class IssueListCreateView(generics.ListCreateAPIView):
     serializer_class = IssueSerializer
     permission_classes = [IsAuthenticated, IsUser]
 
-    def perform_create(self, serializer):
-        # Automatically set the logged-in user as the creator of the issue
-        serializer.save(user=self.request.user)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Define a range for latitude and longitude comparison
+        latitude = serializer.validated_data['latitude']
+        longitude = serializer.validated_data['longitude']
+        range_delta = 0.001  # Adjust this value for the proximity check (approx 100 meters)
+
+        # Find issues within the range of the provided latitude and longitude
+        existing_issue = Issue.objects.filter(
+            Q(latitude__gte=float(latitude) - range_delta) &
+            Q(latitude__lte=float(latitude) + range_delta) &
+            Q(longitude__gte=float(longitude) - range_delta) &
+            Q(longitude__lte=float(longitude) + range_delta) &
+            Q(categories=serializer.validated_data['categories'])
+        ).first()
+
+        if existing_issue:
+            # Return the existing issue ID if a duplicate is found
+            return Response({
+                'existing_issue_id': existing_issue.id,
+                'detail': 'Duplicate issue found'
+            }, status=status.HTTP_200_OK)
+
+        # Create a new issue if no duplicates found
+        new_issue = serializer.save(user=self.request.user)
+        return Response({
+            'new_issue_id': new_issue.id        }, status=status.HTTP_201_CREATED)
 
 class IssueCompleteView(generics.UpdateAPIView):
     queryset = Issue.objects.all()
@@ -106,7 +146,7 @@ class IssueCompleteView(generics.UpdateAPIView):
             issue.save()
             return Response({"message": "Issue marked as complete"}, status=status.HTTP_200_OK)
         else:
-            return Response({"error": "You do not have permission to complete this issue"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": "You do not have permission to complete this issue"}, status=status.HTTP_403_FORBIDDEN)
 
 class IssueRetrieveView(APIView):
     permission_classes = [AllowAny]
@@ -116,7 +156,7 @@ class IssueRetrieveView(APIView):
             try:
                 issue = Issue.objects.get(pk=issue_id)
             except Issue.DoesNotExist:
-                return Response({"error": "Issue Not Found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"detail": "Issue Not Found"}, status=status.HTTP_404_NOT_FOUND)
 
             serializer = IssueSerializer(issue)
             return Response(serializer.data)
@@ -134,14 +174,14 @@ class IssueDeleteView(APIView):
         try:
             issue = Issue.objects.get(pk=issue_id)
         except Issue.DoesNotExist:
-            return Response({"error": "Issue Not Found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Issue Not Found"}, status=status.HTTP_404_NOT_FOUND)
 
         # Allow deletion only if the request user is the issue creator or an admin
         if request.user == issue.user or request.user.role == MyApiUser.ADMIN:
             issue.delete()
             return Response({"message": "Issue deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
         else:
-            return Response({"error": "You do not have permission to delete this issue"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": "You do not have permission to delete this issue"}, status=status.HTTP_403_FORBIDDEN)
 
 # Issue approval accessible only by 'admin' role
 class IssueApproveView(APIView):
