@@ -49,7 +49,7 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
 
 # Issue Model
 class Issue(models.Model):
-    COMPLETED = "completed"
+    SOLVED = "solved"
     APPROVED = "approved"
     NOT_APPROVED = "not_approved"
 
@@ -58,10 +58,9 @@ class Issue(models.Model):
         ('gas', 'Gas'),
         ('sewerage', 'Sewerage'),
         ('road', 'Road'),
-        # Add more categories as needed
     ]
     ISSUE_STATUS = [
-        (COMPLETED, 'Completed'),
+        (SOLVED, 'Solved'),
         (APPROVED, 'Approved'),
         (NOT_APPROVED, 'Not_Approved'),
     ]
@@ -89,3 +88,40 @@ class Like(models.Model):
 
     class Meta:
         unique_together = ('user', 'issue')  # Prevent a user from liking the same issue more than once
+
+
+
+class Comment(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='comments')
+    issue = models.ForeignKey('Issue', on_delete=models.CASCADE, related_name='comments')
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
+    content = models.TextField()
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    likes_count = models.PositiveIntegerField(default=0)
+    is_edited = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at'] # order comments by recent by default
+
+    def __str__(self):
+        return f'Comment by {self.user.username} on {self.issue.title}'
+
+    def add_reply(self, user, content):
+        return Comment.objects.create(
+            user=user,
+            issue=self.issue,
+            parent=self,
+            content=content
+        )
+
+class CommentLike(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name='likes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'comment')
+
+    def __str__(self):
+        return f'Like by {self.user.username} on comment {self.comment.id}'
