@@ -1,7 +1,7 @@
 from rest_framework import serializers
-from .models import MyApiUser, Issue, Like
+from .models import MyApiUser, Issue, Like, Comment
 from django.contrib.auth import authenticate
-
+from .models import Comment, CommentLike
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
@@ -31,7 +31,7 @@ class LoginSerializer(serializers.Serializer):
         if user is None:
             raise serializers.ValidationError("Invalid login credentials")
         
-        # Return the user instance, not the raw data
+        # Return the user instance
         return {'user': user}
 
 # Serializer for listing user details
@@ -40,16 +40,67 @@ class MyApiUserSerializer(serializers.ModelSerializer):
         model = MyApiUser
         fields = ['id', 'email', 'username', "role", 'is_active', 'created_at', 'updated_at']  # Include the new fields
 
-class IssueSerializer(serializers.ModelSerializer):
-    latitude = serializers.DecimalField(max_digits=9, decimal_places=6)
-    longitude = serializers.DecimalField(max_digits=9, decimal_places=6)
-
-    class Meta:
-        model = Issue
-        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", 'created_at', 'updated_at']  # Include the new fields
-        read_only_fields = ['user', 'created_at', 'updated_at']  # Ensure these fields are read-only
-
 class LikeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Like
         fields = ['user', 'issue', 'created_at']
+        read_only_fields = ['created_at']
+
+class RecursiveSerializer(serializers.Serializer):
+    def to_representation(self, value):
+        serializer = self.parent.parent.__class__(value, context=self.context)
+        return serializer.data
+
+class CommentSerializer(serializers.ModelSerializer):
+    user = serializers.SerializerMethodField()
+    replies = RecursiveSerializer(many=True, read_only=True)
+    likes_count = serializers.IntegerField(read_only=True)
+    is_liked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'user', 'issue', 'parent', 'content', 'created_at', 'updated_at', 'likes_count', 'is_edited', 'replies', 'is_liked']
+        read_only_fields = ['user', 'issue', 'created_at', 'updated_at', 'likes_count', 'is_edited']
+
+    # will get the user data needed and should be the same name as the 'user' variable
+    # future enhancements: profile pic
+    def get_user(self, obj):
+        return {
+            'id': obj.user.id,
+            'username': obj.user.username,
+            'role': obj.user.role
+        }
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return CommentLike.objects.filter(user=request.user, comment=obj).exists()
+        return False
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+class CommentLikeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CommentLike
+        fields = ['id', 'user', 'comment', 'created_at']
+        read_only_fields = ['user', 'created_at'] # can't be updatead via api
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+    
+class IssueSerializer(serializers.ModelSerializer):
+    latitude = serializers.DecimalField(max_digits=9, decimal_places=6)
+    longitude = serializers.DecimalField(max_digits=9, decimal_places=6)
+    comments = CommentSerializer(many=True, read_only=True)
+    comments_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Issue
+        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments", "comments_count", 'created_at', 'updated_at']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'comments_count'] # can't be updated via api
+
+    def get_comments_count(self, obj):
+        return obj.comments.count()
