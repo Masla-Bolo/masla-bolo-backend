@@ -1,13 +1,18 @@
 from django.urls import path
 from .views import (
+    CommentCreateView,
+    CommentDeleteView,
+    CommentLikeView,
+    IssueCommentsListView,
     IssueCompleteView, 
     IssueListCreateView, 
     IssueRetrieveView, 
     IssueDeleteView,
     IssueLikeView,
+    LikedCommentsListView,
     LikedIssuesListView,
     RegisterView, 
-    LoginView, 
+    LoginView,
     UserListView,
     UserDeleteView,
     UserDetailView
@@ -28,4 +33,9 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('issues/<int:issue_id>/comments/', CommentCreateView.as_view(), name='create_comment'),
+    path('issues/<int:issue_id>/comments/list/', IssueCommentsListView.as_view(), name='list_comments'),
+    path('comments/<int:comment_id>/delete/', CommentDeleteView.as_view(), name='delete_comment'),
+    path('comments/<int:comment_id>/like/', CommentLikeView.as_view(), name='like_comment'),
+    path('comments/liked/', LikedCommentsListView.as_view(), name='liked_comments'),
 ]

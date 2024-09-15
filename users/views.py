@@ -1,13 +1,13 @@
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .serializers import LikeSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer
+from .serializers import CommentSerializer, LikeSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from rest_framework import generics, status
 from rest_framework.views import APIView
-from .models import MyApiUser, Issue, Like
+from .models import CommentLike, MyApiUser, Issue, Like, Comment
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
 from django.db.models import Q
@@ -142,7 +142,7 @@ class IssueCompleteView(generics.UpdateAPIView):
 
         # Allow completion only if the request user is the issue creator or an admin
         if request.user == issue.user or request.user.role == MyApiUser.ADMIN:
-            issue.issue_status = Issue.COMPLETED
+            issue.issue_status = Issue.SOLVED
             issue.save()
             return Response({"message": "Issue marked as complete"}, status=status.HTTP_200_OK)
         else:
@@ -241,6 +241,95 @@ class LikedIssuesListView(generics.ListAPIView):
         
         # Return the issues that match the liked ones
         return Issue.objects.filter(id__in=liked_issues)
+    
+class CommentCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, issue_id):
+        issue = get_object_or_404(Issue, id=issue_id)
+        parent_id = request.data.get('parent_id')
+
+        serializer = CommentSerializer(data=request.data, context={'request': request})
+
+        if serializer.is_valid():
+            if parent_id:
+                # This is a reply to an existing comment
+                parent_comment = get_object_or_404(Comment, id=parent_id)
+                comment = serializer.save(issue=parent_comment.issue, parent=parent_comment, user=request.user)
+            else:
+                # This is a top-level comment
+                comment = serializer.save(issue=issue, user=request.user)
+
+            response_data = {
+                "comment_id": comment.id,
+                "content": comment.content,
+                "user": {
+                    "id": comment.user.id,
+                    "username": comment.user.username
+                },
+                "issue_id": comment.issue.id,
+                "parent_id": comment.parent.id if comment.parent else None,  # Optional, for replies
+                "created_at": comment.created_at,
+                "likes_count": comment.likes_count
+            }
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# List all comments for an issue, including replies
+class IssueCommentsListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, issue_id):
+        issue = get_object_or_404(Issue, id=issue_id)
+        comments = Comment.objects.filter(issue=issue, parent__isnull=True)  # Top-level comments only
+        serializer = CommentSerializer(comments, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+# Delete a comment (only by the comment creator or an admin)
+class CommentDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, comment_id):
+        comment = get_object_or_404(Comment, id=comment_id)
+        
+        # Allow deletion by the comment's author or an admin
+        if request.user == comment.user or request.user.role == MyApiUser.ADMIN:
+            comment.delete()
+            return Response({"detail": "Comment deleted"}, status=status.HTTP_204_NO_CONTENT)
+        return Response({"detail": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+
+# Like or Unlike a comment
+class CommentLikeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, comment_id):
+        comment = get_object_or_404(Comment, id=comment_id)
+        existing_like = CommentLike.objects.filter(user=request.user, comment=comment).first()
+
+        if existing_like:
+            existing_like.delete()  # Unlike
+            comment.likes_count -= 1
+            comment.save()
+            return Response({"detail": "Like removed", "likes_count": comment.likes_count}, status=status.HTTP_200_OK)
+
+        # Add like
+        CommentLike.objects.create(user=request.user, comment=comment)
+        comment.likes_count += 1
+        comment.save()
+
+        return Response({"detail": "Comment liked", "likes_count": comment.likes_count}, status=status.HTTP_201_CREATED)
+
+# List comments liked by the authenticated user
+class LikedCommentsListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        liked_comments = CommentLike.objects.filter(user=request.user).values_list('comment', flat=True)
+        comments = Comment.objects.filter(id__in=liked_comments)
+        serializer = CommentSerializer(comments, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 # API view accessible only by 'official' role
 class OfficialView(APIView):
