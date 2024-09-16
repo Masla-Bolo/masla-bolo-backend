@@ -72,8 +72,7 @@ class RegisterView(generics.CreateAPIView):
             refresh = RefreshToken.for_user(user)
             return Response({
                 'user': serializer.data,
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
+                'token': str(refresh.access_token),
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -91,8 +90,7 @@ class LoginView(generics.GenericAPIView):
 
         refresh = RefreshToken.for_user(user)
         return Response({
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
+            'token': str(refresh.access_token),
         }, status=status.HTTP_200_OK)
 
 
@@ -130,7 +128,8 @@ class IssueListCreateView(generics.ListCreateAPIView):
         # Create a new issue if no duplicates found
         new_issue = serializer.save(user=self.request.user)
         return Response({
-            'new_issue_id': new_issue.id        }, status=status.HTTP_201_CREATED)
+            'issue': new_issue        
+        },status=status.HTTP_201_CREATED)
 
 class IssueCompleteView(generics.UpdateAPIView):
     queryset = Issue.objects.all()
@@ -245,9 +244,9 @@ class LikedIssuesListView(generics.ListAPIView):
 class CommentCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, issue_id):
-        issue = get_object_or_404(Issue, id=issue_id)
-        parent_id = request.data.get('parent_id')
+    def post(self, request, format=None):
+        issue = get_object_or_404(Issue, id=request.data.get("issueId"))
+        parent_id = request.data.get('parentId')
 
         serializer = CommentSerializer(data=request.data, context={'request': request})
 
