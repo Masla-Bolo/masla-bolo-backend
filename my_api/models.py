@@ -74,22 +74,14 @@ class Issue(models.Model):
     images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
     issue_status = models.CharField(max_length=15, choices=ISSUE_STATUS, default=NOT_APPROVED) # Track completion status
     is_anonymous = models.BooleanField(default=False)
-    likes_count = models.IntegerField(default=0)
+    likes_count = models.PositiveIntegerField(default=0)
+    comments_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)  # Automatically set on creation
     updated_at = models.DateTimeField(auto_now=True)  # Automatically update when modified
 
     def __str__(self):
         return self.title
     
-class Like(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    issue = models.ForeignKey(Issue, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('user', 'issue')  # Prevent a user from liking the same issue more than once
-
-
 
 class Comment(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='comments')
@@ -114,14 +106,24 @@ class Comment(models.Model):
             parent=self,
             content=content
         )
-
-class CommentLike(models.Model):
+    
+class Like(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name='likes')
+    issue = models.ForeignKey(Issue, on_delete=models.CASCADE, null=True, blank=True, related_name="likes")
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True, related_name="likes")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'comment')
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'issue'], name='unique_issue_like'),
+            models.UniqueConstraint(fields=['user', 'comment'], name='unique_comment_like'),
+            models.CheckConstraint(
+                check=models.Q(issue__isnull=False) | models.Q(comment__isnull=False),
+                name='like_issue_or_comment'
+            )
+        ]
 
     def __str__(self):
-        return f'Like by {self.user.username} on comment {self.comment.id}'
+        if self.issue:
+            return f'Like by {self.user.username} on issue: {self.issue.title}'
+        return f'Like by {self.user.username} on comment: {self.comment.content[:20]}...'

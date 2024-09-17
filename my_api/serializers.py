@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import MyApiUser, Issue, Like, Comment
 from django.contrib.auth import authenticate
-from .models import Comment, CommentLike
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
@@ -11,13 +10,21 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ["id", 'email', "username", 'password', 'role']
 
     def create(self, validated_data):
-        user = MyApiUser.objects.create_user(
-            email=validated_data['email'],
-            username=validated_data['username'],
-            password=validated_data['password'],
-            role=validated_data['role']
-        )
-        return user
+        if validated_data['role'] == "admin":
+            user = MyApiUser.objects.create_superuser(
+                email=validated_data['email'],
+                username=validated_data['username'],
+                password=validated_data['password'],
+            )
+            return user
+        else:
+            user = MyApiUser.objects.create_user(
+                email=validated_data['email'],
+                username=validated_data['username'],
+                password=validated_data['password'],
+                role=validated_data['role']
+            )
+            return user
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -43,7 +50,7 @@ class MyApiUserSerializer(serializers.ModelSerializer):
 class LikeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Like
-        fields = ['user', 'issue', 'created_at']
+        fields = ['user', 'issue', "comment", 'created_at']
         read_only_fields = ['created_at']
 
 class RecursiveSerializer(serializers.Serializer):
@@ -74,23 +81,13 @@ class CommentSerializer(serializers.ModelSerializer):
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            return CommentLike.objects.filter(user=request.user, comment=obj).exists()
+            return Like.objects.filter(user=request.user, comment=obj).exists()
         return False
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
-class CommentLikeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CommentLike
-        fields = ['id', 'user', 'comment', 'created_at']
-        read_only_fields = ['user', 'created_at'] # can't be updatead via api
-
-    def create(self, validated_data):
-        validated_data['user'] = self.context['request'].user
-        return super().create(validated_data)
-    
 class IssueSerializer(serializers.ModelSerializer):
     latitude = serializers.DecimalField(max_digits=9, decimal_places=6)
     longitude = serializers.DecimalField(max_digits=9, decimal_places=6)
