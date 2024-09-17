@@ -8,7 +8,7 @@ from rest_framework import generics, status, viewsets
 from .models import MyApiUser, Issue, Like, Comment
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
-from django.db.models import Q
+from django.db.models import Q, Count
 
 # Auth
 class RegisterView(generics.CreateAPIView):
@@ -36,8 +36,11 @@ class LoginView(generics.GenericAPIView):
         update_last_login(None, user)
 
         refresh = RefreshToken.for_user(user)
+        user_data = MyApiUserSerializer(user).data
+
         return Response({
             'token': str(refresh.access_token),
+            'user': user_data
         }, status=status.HTTP_200_OK)
 
 # Issues
@@ -55,7 +58,7 @@ class IssueViewSet(viewsets.ModelViewSet):
         elif self.action == 'retrieve':
             permission_classes = [IsAuthenticated]
         elif self.action in ['create', 'update', 'partial_update', 'destroy']:
-            permission_classes = [IsAuthenticated, IsUser, IsAdmin]
+            permission_classes = [IsAuthenticated, IsUser]
         elif self.action in ['complete', 'approve']:
             permission_classes = [IsAuthenticated, IsAdmin, IsUser]
         else:
@@ -110,13 +113,10 @@ class IssueViewSet(viewsets.ModelViewSet):
                 'detail': 'This Issue Already Exists'
             }, status=status.HTTP_200_OK)
 
-        self.perform_create(serializer)
+        serializer.save(user=self.request.user)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if request.user == instance.user or request.user.role == 'ADMIN':
@@ -153,7 +153,7 @@ class IssueViewSet(viewsets.ModelViewSet):
 
 # Comments
 class CommentViewSet(viewsets.ModelViewSet):
-    queryset = Comment.objects.all()
+    queryset = Comment.objects.filter(parent__isnull=True)
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
 
@@ -166,7 +166,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         elif self.action == 'retrieve':
             permission_classes = [IsAuthenticated]
         elif self.action in ['create', 'update', 'partial_update', 'destroy']:
-            permission_classes = [IsAuthenticated, IsUser, IsAdmin, IsOfficial]
+            permission_classes = [IsAuthenticated]
         else:
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
@@ -192,6 +192,10 @@ class CommentViewSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         if issue_id:
             queryset = queryset.filter(issue_id=issue_id)
+
+        queryset = queryset.annotate(replies_count=Count('replies')).filter(
+            Q(parent__isnull=True) | Q(replies_count__gt=0)
+        )
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -242,7 +246,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             permission_classes = [IsAdmin]
         elif self.action == 'retrieve':
-            permission_classes = [IsAuthenticated]
+            permission_classes = [IsUser]
         elif self.action in ['create', 'update', 'partial_update', 'destroy']:
             permission_classes = [IsAuthenticated, IsUser, IsAdmin, IsOfficial]
         else:
@@ -258,9 +262,10 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
+    @action(url_name="profile",detail=False)
+    def profile(self, request, *args, **kwargs):
+        user = request.user
+        serializer = self.get_serializer(user)
         return Response(serializer.data)
     
     def update(self, request, *args, **kwargs):

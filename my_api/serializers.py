@@ -98,6 +98,13 @@ class IssueSerializer(serializers.ModelSerializer):
         model = Issue
         fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments", "comments_count", 'created_at', 'updated_at']
         read_only_fields = ['user', 'created_at', 'updated_at', 'comments_count'] # can't be updated via api
+    
 
     def get_comments_count(self, obj):
         return obj.comments.count()
+    
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        if 'comments' in representation:
+            representation.pop('comments')
+        return representation

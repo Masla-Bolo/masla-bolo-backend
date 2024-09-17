@@ -58,10 +58,12 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 25,
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=14 * 24 * 60), # 14 days 
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': False,
@@ -109,7 +111,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'masla_bolo',
         'USER': 'masla_bolo_owner',
-        'PASSWORD': 'jZABo31cIMLP',  # Temporarily hardcode for testing
+        'PASSWORD': 'jZABo31cIMLP',
         'HOST': 'ep-crimson-pine-a55kw9gw-pooler.us-east-2.aws.neon.tech',
         'PORT': '5432',
         'OPTIONS': {'sslmode': 'require'},

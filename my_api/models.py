@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from jsonschema import ValidationError
 
 class MyApiUserManager(BaseUserManager):
     def create_user(self, email, username, role="user", password=None):
@@ -70,7 +71,7 @@ class Issue(models.Model):
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
     description = models.CharField(max_length=150)  # Limit to 150 characters
-    categories = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
+    categories = models.JSONField()
     images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
     issue_status = models.CharField(max_length=15, choices=ISSUE_STATUS, default=NOT_APPROVED) # Track completion status
     is_anonymous = models.BooleanField(default=False)
@@ -81,6 +82,19 @@ class Issue(models.Model):
 
     def __str__(self):
         return self.title
+    
+    def clean(self):
+        if not self.categories or not isinstance(self.categories, list) or len(self.categories) < 1:
+            raise ValidationError("At least one category must be selected.")
+
+        valid_categories = [choice[0] for choice in self.CATEGORY_CHOICES]
+        for category in self.categories:
+            if category not in valid_categories:
+                raise ValidationError(f"Invalid category: {category}")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super(Issue, self).save(*args, **kwargs)
     
 
 class Comment(models.Model):
