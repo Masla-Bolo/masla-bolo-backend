@@ -99,6 +99,7 @@ class Issue(models.Model):
 
 class Comment(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='comments')
+    reply_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name='reply_to')
     issue = models.ForeignKey('Issue', on_delete=models.CASCADE, related_name='comments')
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
     content = models.TextField()
@@ -113,14 +114,6 @@ class Comment(models.Model):
     def __str__(self):
         return f'Comment by {self.user.username} on {self.issue.title}'
 
-    def add_reply(self, user, content):
-        return Comment.objects.create(
-            user=user,
-            issue=self.issue,
-            parent=self,
-            content=content
-        )
-    
 class Like(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     issue = models.ForeignKey(Issue, on_delete=models.CASCADE, null=True, blank=True, related_name="likes")
