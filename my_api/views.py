@@ -25,13 +25,14 @@ class RegisterView(generics.CreateAPIView):
                 'token': str(refresh.access_token),
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 class LoginView(generics.GenericAPIView):
     serializer_class = LoginSerializer
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']  # Extract the user instance
+        user = serializer.validated_data['user']
 
         update_last_login(None, user)
 
