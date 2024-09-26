@@ -9,9 +9,10 @@ from .models import MyApiUser, Issue, Like, Comment
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
 from django.db.models import Q, Count
+from .mixins import StandardResponseMixin
 
 # Auth
-class RegisterView(generics.CreateAPIView):
+class RegisterView(generics.CreateAPIView, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
     serializer_class = RegisterSerializer
 
@@ -20,13 +21,13 @@ class RegisterView(generics.CreateAPIView):
         if serializer.is_valid():
             user = serializer.save()
             refresh = RefreshToken.for_user(user)
-            return Response({
+            return self.success_response(message="Register Successful!", data={
                 'user': serializer.data,
                 'token': str(refresh.access_token),
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            }, status_code=status.HTTP_201_CREATED)
+        return self.error_response(message="Registeration Failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
-class LoginView(generics.GenericAPIView):
+class LoginView(generics.GenericAPIView, StandardResponseMixin):
     serializer_class = LoginSerializer
 
     def post(self, request, *args, **kwargs):
@@ -39,13 +40,13 @@ class LoginView(generics.GenericAPIView):
         refresh = RefreshToken.for_user(user)
         user_data = MyApiUserSerializer(user).data
 
-        return Response({
+        return self.success_response(message="Login Successful!",data={
             'token': str(refresh.access_token),
             'user': user_data
-        }, status=status.HTTP_200_OK)
+        }, status_code=status.HTTP_200_OK)
 
 # Issues
-class IssueViewSet(viewsets.ModelViewSet):
+class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = Issue.objects.all()
     serializer_class = IssueSerializer
     permission_classes = [IsAuthenticated]
@@ -69,11 +70,22 @@ class IssueViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
+
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            paginated_data = self.get_paginated_response(serializer.data).data  # Extract the data from the paginated response
+            return self.success_response(
+                message="Fetched Successfully!!", 
+                data=paginated_data,  # Use the extracted data
+                status_code=status.HTTP_200_OK
+            )
+        
         serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        return self.success_response(
+            message="Fetched Successfully!!",
+            data=serializer.data,  # Use the actual data here
+            status_code=status.HTTP_200_OK
+        )
     
     @action(detail=False, permission_classes=[IsAuthenticated, IsUser])
     def my(self, request, *args, **kwargs):
@@ -83,29 +95,35 @@ class IssueViewSet(viewsets.ModelViewSet):
         
         if page is not None:
             serializer = self.get_serializer(page, many=True, context={'user': user})
-            return self.get_paginated_response(serializer.data)
+            paginated_data = self.get_paginated_response(serializer.data).data  # Extract the data from the paginated response
+            return self.success_response(
+                message="Fetched Successfully!!", 
+                data=paginated_data,  # Use the extracted data
+                status_code=status.HTTP_200_OK
+            )
+            # return self.get_paginated_response(serializer.data)
         
         serializer = self.get_serializer(queryset, many=True, context={'user': user})
-        return Response(serializer.data)
+        return self.success_response(message="Successful!!", data=serializer.data, status_code=status.HTTP_200_OK)
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        return self.success_response(message="Retrival Successful!", data=serializer.data, status_code=status.HTTP_200_OK)
 
     @action(detail=True, methods=['patch'])
     def complete(self, request, pk=None):
         issue = self.get_object()
         issue.issue_status = Issue.SOLVED
         issue.save()
-        return Response({"message": "Issue marked as complete"}, status=status.HTTP_200_OK)
+        return self.success_response(message="Issue marked as complete", data=issue, status_code=status.HTTP_200_OK)
         
     @action(detail=True, methods=['patch'])
     def approve(self, request, pk=None):
         issue = self.get_object()
         issue.issue_status = Issue.APPROVED
         issue.save()
-        return Response({"message": "Issue approved"}, status=status.HTTP_200_OK)
+        return self.success_response(message="Issue approved", data=issue, status_code=status.HTTP_200_OK)
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -122,21 +140,21 @@ class IssueViewSet(viewsets.ModelViewSet):
         ).first()
 
         if existing_issue:
-            return Response({
+            return self.success_response(message="Same Issue Exists from within your Area", data={
                 'existing_issue_id': existing_issue.id,
                 'detail': 'This Issue Already Exists'
-            }, status=status.HTTP_200_OK)
+            }, status_code=status.HTTP_200_OK)
 
         serializer.save(user=self.request.user)
         headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return self.success_response(message="New Issue Created", data={serializer.data, headers}, status=status.HTTP_201_CREATED)
     
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        if request.user == instance.user or request.user.role == 'ADMIN':
+        if request.user == instance.user or request.user.role == MyApiUser.ADMIN:
             self.perform_destroy(instance)
-            return Response({"message": "Issue deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-        return Response({"detail": "You do not have permission to delete this issue"}, status=status.HTTP_403_FORBIDDEN)
+            return self.success_response(message="Issue deleted successfully", data={}, status_code=status.HTTP_204_NO_CONTENT)
+        return self.error_response(message="You do not have permission to delete this issue", errors="PermissionError", status_code=status.HTTP_403_FORBIDDEN)
     
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def like(self, request, pk=None):
@@ -147,12 +165,12 @@ class IssueViewSet(viewsets.ModelViewSet):
         if created:
             issue.likes_count += 1
             issue.save()
-            return Response({"detail": "Issue liked", "likes_count": issue.likes_count}, status=status.HTTP_201_CREATED)
+            return self.success_response(message="Issue liked", data={"likes_count": issue.likes_count}, status_code=status.HTTP_201_CREATED)
         
         like.delete()
         issue.likes_count -= 1
         issue.save()
-        return Response({"detail": "Like removed", "likes_count": issue.likes_count}, status=status.HTTP_200_OK)
+        return self.success_response(message="Like removed", data={"likes_count": issue.likes_count}, status_code=status.HTTP_200_OK)
     
     @action(detail=False, permission_classes=[IsAuthenticated])
     def liked_issues(self, request):
@@ -161,12 +179,14 @@ class IssueViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(liked_issues)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            paginated_data = self.get_paginated_response(serializer.data).data
+            return self.success_response(message="Issues Liked by the User", data=paginated_data, status_code=status.HTTP_200_OK)
         serializer = self.get_serializer(liked_issues, many=True)
-        return Response(serializer.data)
+        return self.success_response(message="Issues Liked by the User", data=serializer.data, status_code=status.HTTP_200_OK)
+
 
 # Comments
-class CommentViewSet(viewsets.ModelViewSet):
+class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = Comment.objects.filter(parent__isnull=True)
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
@@ -199,7 +219,7 @@ class CommentViewSet(viewsets.ModelViewSet):
             serializer.save(issue=issue, user=request.user)
 
         headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return self.success_response(message="Comment Created Successfully!!", data={serializer.data, headers}, status_code=status.HTTP_201_CREATED)
 
     def list(self, request, *args, **kwargs):
         issue_id = request.query_params.get('issueId')
@@ -213,14 +233,15 @@ class CommentViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            paginated_data = self.get_paginated_response(serializer.data)
+            return self.success_response(message="Comment List", data=paginated_data, status_code=status.HTTP_200_OK)
         serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        return self.success_response(message="Comment List", data=serializer.data, status_code=status.HTTP_200_OK)
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        return self.success_response(message="Retrieval Successful!", data=serializer.data, status_code=status.HTTP_200_OK)
     
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -228,8 +249,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         # Allow deletion by the comment's author or an admin
         if request.user == instance.user or request.user.role == MyApiUser.ADMIN:
             self.perform_destroy(instance)
-            return Response({"detail": "Comment deleted"}, status=status.HTTP_204_NO_CONTENT)
-        return Response({"detail": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+            return self.success_response(message="Comment deleted", data={}, status=status.HTTP_204_NO_CONTENT)
+        return self.error_response(message="Permission denied", data={}, status=status.HTTP_403_FORBIDDEN)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def like(self, request, pk=None):
@@ -240,15 +261,15 @@ class CommentViewSet(viewsets.ModelViewSet):
         if created:
             comment.likes_count += 1
             comment.save()
-            return Response({"detail": "Comment liked"}, status=status.HTTP_201_CREATED)
+            return self.success_response(message="Comment liked", data={"likes_count": comment.likes_count}, status=status.HTTP_201_CREATED)
         
         like.delete()
         comment.likes_count -= 1
         comment.save()
-        return Response({"detail": "Comment Unliked"}, status=status.HTTP_200_OK)
+        return self.success_response(message="Comment Unliked", data={"likes_count": comment.likes_count}, status=status.HTTP_200_OK)
 
 # Users
-class UserViewSet(viewsets.ModelViewSet):
+class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
     serializer_class = MyApiUserSerializer
     permission_classes = [IsAuthenticated]
@@ -272,26 +293,27 @@ class UserViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            paginated_data = self.get_paginated_response(serializer.data)
+            return self.success_response(message="User List", data=paginated_data)
         serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        return self.success_response(message="User List", data=serializer.data)
 
     @action(url_name="profile",detail=False)
     def profile(self, request, *args, **kwargs):
         user = request.user
         serializer = self.get_serializer(user)
-        return Response(serializer.data)
+        return self.success_response(message="User Profile", data=serializer.data)
     
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         serializer.is_valid(raise_exception=True)
         instance.save()
-        return Response(serializer.data)
+        return self.success_response(message="User Updated", data=serializer.data)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if request.user == instance.user or request.user.role == 'ADMIN':
             self.perform_destroy(instance)
-            return Response({"message": "Account deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-        return Response({"detail": "You do not have permission to delete this account"}, status=status.HTTP_403_FORBIDDEN)
+            return self.success_response(message="Account deleted successfully", status=status.HTTP_204_NO_CONTENT)
+        return self.error_response(message="You do not have permission to delete this account", status=status.HTTP_403_FORBIDDEN)
