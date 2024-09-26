@@ -34,7 +34,7 @@ SECRET_KEY = 'django-insecure-@jxk1tmrfo_pb_s^%z5n3g&jc=s_#i=1w9tyl!xjed^6e^==^-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ["127.0.0.1"]
 
 AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
@@ -76,9 +76,9 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -115,7 +115,7 @@ DATABASES = {
         'NAME': 'masla_bolo',
         'USER': 'masla_bolo_owner',
         'PASSWORD': 'jZABo31cIMLP',
-        'HOST': 'ep-crimson-pine-a55kw9gw-pooler.us-east-2.aws.neon.tech',
+        'HOST': 'ep-crimson-pine-a55kw9gw.us-east-2.aws.neon.tech',
         'PORT': '5432',
         'OPTIONS': {'sslmode': 'require'},
     }
