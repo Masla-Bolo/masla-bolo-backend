@@ -110,7 +110,7 @@ class Issue(models.Model):
         if not self.categories or not isinstance(self.categories, list) or len(self.categories) < 1:
             raise ValidationError("At least one category must be selected.")
 
-        valid_categories = [choice[0] for choice in self.CATEGORY_CHOICES]
+        valid_categories = [choice[1] for choice in self.CATEGORY_CHOICES]
         for category in self.categories:
             if category not in valid_categories:
                 raise ValidationError(f"Invalid category: {category}")

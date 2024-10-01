@@ -61,8 +61,10 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             permission_classes = [IsAuthenticated]
         elif self.action in ['create', 'update', 'partial_update', 'destroy']:
             permission_classes = [IsAuthenticated, IsUser]
-        elif self.action in ['complete', 'approve']:
-            permission_classes = [IsAuthenticated, IsAdmin, IsUser]
+        elif self.action == 'complete':
+            permission_classes = [IsAuthenticated, IsUser]
+        elif self.action == 'approve':
+            permission_classes = [IsAdmin]
         else:
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
@@ -147,7 +149,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
 
         serializer.save(user=self.request.user)
         headers = self.get_success_headers(serializer.data)
-        return self.success_response(message="New Issue Created", data={serializer.data, headers}, status=status.HTTP_201_CREATED)
+        return self.success_response(message="New Issue Created", data=serializer.data, status_code=status.HTTP_201_CREATED)
     
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -175,7 +177,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     @action(detail=False, permission_classes=[IsAuthenticated])
     def liked_issues(self, request):
         user = request.user
-        liked_issues = Issue.objects.filter(like__user=user)
+        liked_issues = Issue.objects.filter(likes__user=user)
         page = self.paginate_queryset(liked_issues)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -219,7 +221,7 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             serializer.save(issue=issue, user=request.user)
 
         headers = self.get_success_headers(serializer.data)
-        return self.success_response(message="Comment Created Successfully!!", data={serializer.data, headers}, status_code=status.HTTP_201_CREATED)
+        return self.success_response(message="Comment Created Successfully!!", data=serializer.data, status_code=status.HTTP_201_CREATED)
 
     def list(self, request, *args, **kwargs):
         issue_id = request.query_params.get('issueId')
@@ -233,7 +235,7 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            paginated_data = self.get_paginated_response(serializer.data)
+            paginated_data = self.get_paginated_response(serializer.data).data
             return self.success_response(message="Comment List", data=paginated_data, status_code=status.HTTP_200_OK)
         serializer = self.get_serializer(queryset, many=True)
         return self.success_response(message="Comment List", data=serializer.data, status_code=status.HTTP_200_OK)
@@ -261,12 +263,12 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if created:
             comment.likes_count += 1
             comment.save()
-            return self.success_response(message="Comment liked", data={"likes_count": comment.likes_count}, status=status.HTTP_201_CREATED)
+            return self.success_response(message="Comment liked", data={"likes_count": comment.likes_count}, status_code=status.HTTP_201_CREATED)
         
         like.delete()
         comment.likes_count -= 1
         comment.save()
-        return self.success_response(message="Comment Unliked", data={"likes_count": comment.likes_count}, status=status.HTTP_200_OK)
+        return self.success_response(message="Comment Unliked", data={"likes_count": comment.likes_count}, status_code=status.HTTP_200_OK)
 
 # Users
 class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
@@ -293,7 +295,7 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            paginated_data = self.get_paginated_response(serializer.data)
+            paginated_data = self.get_paginated_response(serializer.data).data
             return self.success_response(message="User List", data=paginated_data)
         serializer = self.get_serializer(queryset, many=True)
         return self.success_response(message="User List", data=serializer.data)
@@ -313,7 +315,7 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        if request.user == instance.user or request.user.role == 'ADMIN':
+        if request.user == instance.user or request.user.role == MyApiUser.ADMIN:
             self.perform_destroy(instance)
             return self.success_response(message="Account deleted successfully", status=status.HTTP_204_NO_CONTENT)
         return self.error_response(message="You do not have permission to delete this account", status=status.HTTP_403_FORBIDDEN)
