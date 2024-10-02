@@ -262,6 +262,7 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         queryset = queryset.annotate(replies_count=Count('replies')).filter(
             Q(parent__isnull=True) | Q(replies_count__gt=0)
         )
+        queryset = queryset.order_by('-created_at')
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)

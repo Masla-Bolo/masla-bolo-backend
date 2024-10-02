@@ -29,7 +29,9 @@ APPEND_SLASH = True
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-@jxk1tmrfo_pb_s^%z5n3g&jc=s_#i=1w9tyl!xjed^6e^==^-'
+
+
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -111,12 +113,12 @@ WSGI_APPLICATION = 'my_site.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'masla_bolo',
-        'USER': 'masla_bolo_owner',
-        'PASSWORD': 'jZABo31cIMLP',
-        'HOST': 'ep-crimson-pine-a55kw9gw.us-east-2.aws.neon.tech',
-        'PORT': '5432',
+        'ENGINE': os.getenv('db_engine'),
+        'NAME': os.getenv('db_name'),
+        'USER': os.getenv('db_user'),
+        'PASSWORD': os.getenv('db_password'),
+        'HOST': os.getenv('db_host'),
+        'PORT': os.getenv('db_port', default=5432),
         'OPTIONS': {'sslmode': 'require'},
     }
 }
@@ -139,6 +141,14 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# Email settings from .env
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND')
+EMAIL_HOST = os.getenv('EMAIL_HOST')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', default=587))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
