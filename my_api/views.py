@@ -116,16 +116,46 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     @action(detail=True, methods=['patch'])
     def complete(self, request, pk=None):
         issue = self.get_object()
+        
+        # Check if user is the issue creator
+        if request.user != issue.user or request.user.role != MyApiUser.USER:
+            return self.error_response(
+                message="Only the issue creator can mark this issue as complete",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if issue is approved
+        if issue.issue_status != Issue.APPROVED:
+            return self.error_response(
+                message="Issue is not approved, cannot be marked as complete",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
         issue.issue_status = Issue.SOLVED
         issue.save()
-        return self.success_response(message="Issue marked as complete", data=issue, status_code=status.HTTP_200_OK)
+        return self.success_response(
+            message="Issue marked as complete",
+            data=issue,
+            status_code=status.HTTP_200_OK
+        )
         
     @action(detail=True, methods=['patch'])
     def approve(self, request, pk=None):
         issue = self.get_object()
+        if issue.issue_status == Issue.APPROVED:
+            return self.error_response(
+                message="Issue is already approved",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
         issue.issue_status = Issue.APPROVED
         issue.save()
-        return self.success_response(message="Issue approved", data=issue, status_code=status.HTTP_200_OK)
+        serializer = self.get_serializer(issue)
+        return self.success_response(
+            message="Issue approved",
+            data=serializer.data,
+            status_code=status.HTTP_200_OK
+        )
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
