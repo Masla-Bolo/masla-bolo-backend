@@ -143,7 +143,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
 
         if existing_issue:
             return self.success_response(message="Same Issue Exists from within your Area", data={
-                'existing_issue_id': existing_issue.id,
+                'id': existing_issue.id,
                 'detail': 'This Issue Already Exists'
             }, status_code=status.HTTP_200_OK)
 

@@ -91,7 +91,7 @@ class CommentSerializer(serializers.ModelSerializer):
 class IssueSerializer(serializers.ModelSerializer):
     latitude = serializers.DecimalField(max_digits=9, decimal_places=6)
     longitude = serializers.DecimalField(max_digits=9, decimal_places=6)
-    user=MyApiUserSerializer()
+    user=MyApiUserSerializer(read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
     comments_count = serializers.SerializerMethodField()
 
