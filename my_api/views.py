@@ -1,31 +1,92 @@
+import random
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .serializers import CommentSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer
+from django.conf import settings
+from .serializers import CommentSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer, VerifyEmailSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 from rest_framework import generics, status, viewsets
+from rest_framework.views import APIView
 from .models import MyApiUser, Issue, Like, Comment
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
 from django.db.models import Q, Count
 from .mixins import StandardResponseMixin
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils import timezone
+from datetime import timedelta
 
-# Auth
 class RegisterView(generics.CreateAPIView, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
     serializer_class = RegisterSerializer
 
-    def post(self, request):
+    def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save(email_verified=False)
+
+        headers = self.get_success_headers(serializer.data)
+        return self.success_response(
+            message="Account Registered Successfully!!",
+            data={"email": user.email},
+            status_code=status.HTTP_200_OK
+        )
+
+class SendEmailView(APIView, StandardResponseMixin):
+    def get(self, request, refresh_code=False):
+        email = request.data.get('email')
+        user = MyApiUser.objects.get(email=email)
+
+        if user.email_verified:
+            self.error_response(message="Email is Already Verified. Try Logging in.", errors="AccountExists", status_code=status.HTTP_100_CONTINUE)
+        
+        # Generate a 6-digit verification code
+        verification_code = str(random.randint(100000, 999999))
+        
+        # Store the code and expiry time in user object (adjust model accordingly)
+        user.verification_code = verification_code
+        user.code_expiry = timezone.now() + timedelta(minutes=15)  # Code expires in 5 minutes
+        user.save()
+        
+        # Render HTML template
+        email_subject = 'Verify your email'
+        email_body_html = render_to_string('emails/email_verification_template.html', {
+            'username': user.username,
+            'verification_code': verification_code
+        })
+        
+        # Send email
+        email = EmailMultiAlternatives(
+            email_subject,
+            email_body_html,
+            settings.EMAIL_HOST_USER,
+            [user.email]
+        )
+        email.attach_alternative(email_body_html, "text/html")
+        email.send()
+        return self.success_response(message="Verification Email Sent Successfully!", data={"email": user.email}, status_code=status.HTTP_200_OK)
+
+
+class VerifyEmailView(APIView, StandardResponseMixin):
+    def post(self, request):
+        serializer = VerifyEmailSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.save()
+            serializer.save()
+            user = serializer.validated_data["user"]
+            update_last_login(None, user)
+
             refresh = RefreshToken.for_user(user)
-            return self.success_response(message="Register Successful!", data={
-                'user': serializer.data,
+            user_data = MyApiUserSerializer(user).data
+
+            return self.success_response(message="Email verified successfully!",data={
                 'token': str(refresh.access_token),
-            }, status_code=status.HTTP_201_CREATED)
-        return self.error_response(message="Registeration Failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+                'user': user_data
+            }, status_code=status.HTTP_200_OK)
+                # return self.success_response(message='Email verified successfully!', data={"Success"}, status_code=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
 
 class LoginView(generics.GenericAPIView, StandardResponseMixin):
     serializer_class = LoginSerializer
@@ -34,6 +95,9 @@ class LoginView(generics.GenericAPIView, StandardResponseMixin):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
+
+        if not user.email_verified:
+            return self.error_response(message="Email Not Verified", errors={"VerificationError"}, status_code=status.HTTP_401_UNAUTHORIZED)
 
         update_last_login(None, user)
 

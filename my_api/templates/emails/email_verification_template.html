@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verify your email</title>
+</head>
+<body>
+    <h1>Email Verification</h1>
+    <p>Dear {{ username }},</p>
+    <p>Thank you for registering. Please verify your email using the following code:</p>
+    <h2>{{ verification_code }}</h2>
+    <p>Or click the link below to verify your account:</p>
+    {% comment %} <a href="{{ verification_link }}">Verify your email</a> {% endcomment %}
+    <p>This link will expire in 5 minutes.</p>
+</body>
+</html>
