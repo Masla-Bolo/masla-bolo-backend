@@ -66,7 +66,7 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ['id', 'user', 'issue', 'parent', 'content', 'created_at', 'updated_at', 'likes_count', 'is_edited', 'replies', 'is_liked']
+        fields = ['id', 'user', 'issue', 'parent', 'content', 'created_at', 'updated_at', 'likes_count', 'is_edited', 'replies', 'is_liked', "reply_to"]
         read_only_fields = ['user', 'issue', 'created_at', 'updated_at', 'likes_count', 'is_edited']
 
     # will get the user data needed and should be the same name as the 'user' variable
@@ -93,11 +93,13 @@ class IssueSerializer(serializers.ModelSerializer):
     longitude = serializers.DecimalField(max_digits=9, decimal_places=6)
     user=MyApiUserSerializer(read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
+    is_liked = serializers.SerializerMethodField()
+    categories = serializers.ListField(child=serializers.CharField())
     comments_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Issue
-        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments", "comments_count", 'created_at', 'updated_at']
+        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments", "comments_count","is_liked", 'created_at', 'updated_at']
         read_only_fields = ['user', 'created_at', 'updated_at', 'comments_count'] # can't be updated via api
     
 
@@ -109,3 +111,10 @@ class IssueSerializer(serializers.ModelSerializer):
         if 'comments' in representation:
             representation.pop('comments')
         return representation
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Like.objects.filter(user=request.user, issue=obj).exists()
+        return False
+

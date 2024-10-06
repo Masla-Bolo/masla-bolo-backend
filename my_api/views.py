@@ -6,6 +6,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 from rest_framework import generics, status, viewsets
 from .models import MyApiUser, Issue, Like, Comment
+from rest_framework import filters, status
+from django_filters.rest_framework import DjangoFilterBackend
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
 from django.db.models import Q, Count
@@ -50,6 +52,28 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = Issue.objects.all()
     serializer_class = IssueSerializer
     permission_classes = [IsAuthenticated]
+    filterset_fields = ['issue_status']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        categories = self.request.query_params.get('categories', None)
+        if categories:
+            queryset = queryset.filter(categories__contains=[categories])
+
+        return queryset
+    
+    filter_backends = [
+        DjangoFilterBackend, 
+        filters.SearchFilter, 
+        filters.OrderingFilter
+    ]
+
+    
+    search_fields = ['title', 'description']
+    
+    ordering_fields = ['created_at', 'likes_count', 'comments_count', 'title']
+    ordering = ['-created_at']
+
 
     def get_permissions(self):
         """
@@ -75,20 +99,20 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
 
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            paginated_data = self.get_paginated_response(serializer.data).data  # Extract the data from the paginated response
+            paginated_data = self.get_paginated_response(serializer.data).data
             return self.success_response(
                 message="Fetched Successfully!!", 
-                data=paginated_data,  # Use the extracted data
+                data=paginated_data,
                 status_code=status.HTTP_200_OK
             )
         
         serializer = self.get_serializer(queryset, many=True)
         return self.success_response(
             message="Fetched Successfully!!",
-            data=serializer.data,  # Use the actual data here
+            data=serializer.data,  
             status_code=status.HTTP_200_OK
         )
-    
+
     @action(detail=False, permission_classes=[IsAuthenticated, IsUser])
     def my(self, request, *args, **kwargs):
         user = request.user
@@ -97,16 +121,16 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         
         if page is not None:
             serializer = self.get_serializer(page, many=True, context={'user': user})
-            paginated_data = self.get_paginated_response(serializer.data).data  # Extract the data from the paginated response
+            paginated_data = self.get_paginated_response(serializer.data).data
             return self.success_response(
                 message="Fetched Successfully!!", 
-                data=paginated_data,  # Use the extracted data
+                data=paginated_data,
                 status_code=status.HTTP_200_OK
             )
-            # return self.get_paginated_response(serializer.data)
         
         serializer = self.get_serializer(queryset, many=True, context={'user': user})
         return self.success_response(message="Successful!!", data=serializer.data, status_code=status.HTTP_200_OK)
+
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
