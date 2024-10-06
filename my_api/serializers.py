@@ -94,7 +94,6 @@ class IssueSerializer(serializers.ModelSerializer):
     user=MyApiUserSerializer(read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
     is_liked = serializers.SerializerMethodField()
-    categories = serializers.ListField(child=serializers.CharField())
     comments_count = serializers.SerializerMethodField()
 
     class Meta:
