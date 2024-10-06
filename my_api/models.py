@@ -6,10 +6,10 @@ from django.utils import timezone
 from jsonschema import ValidationError
 
 class MyApiUserManager(BaseUserManager):
-    def create_user(self, email, username, role="user", password=None):
+    def create_user(self, email, username, role="user", password=None, email_verified=False, verification_code=None, code_expiry=None):
         if not email:
             raise ValueError('Users must have an email address')
-        user = self.model(email=self.normalize_email(email), username=username, role=role)  # Use the passed role
+        user = self.model(email=self.normalize_email(email), username=username, role=role, email_verified=email_verified, verification_code=verification_code, code_expiry=code_expiry)  # Use the passed role
         user.set_password(password)  # This hashes the password
         user.save(using=self._db)
         return user
@@ -33,6 +33,9 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
     ]
 
     email = models.EmailField(unique=True)
+    email_verified = models.BooleanField(default=False)
+    verification_code = models.CharField(max_length=6, null=True, blank=True)
+    code_expiry = models.DateTimeField(null=True, blank=True)
     username = models.CharField(max_length=255, unique=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

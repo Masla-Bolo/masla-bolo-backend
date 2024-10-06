@@ -1,6 +1,8 @@
+# from datetime import timezone
 from rest_framework import serializers
 from .models import MyApiUser, Issue, Like, Comment
 from django.contrib.auth import authenticate
+from django.utils import timezone
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
@@ -18,13 +20,52 @@ class RegisterSerializer(serializers.ModelSerializer):
             )
             return user
         else:
+            # Generate random verification code and set code expiry (5 minutes from now)
+            # verification_code = random.randint(100000, 999999)
+            # code_expiry = timezone.now() + timezone.timedelta(minutes=5)
+
+            # Create user with email not verified
             user = MyApiUser.objects.create_user(
                 email=validated_data['email'],
                 username=validated_data['username'],
                 password=validated_data['password'],
-                role=validated_data['role']
+                role=validated_data['role'],
+                email_verified=False,  # Email is not verified yet
+                verification_code=None,
+                code_expiry=None
             )
             return user
+
+class VerifyEmailSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.CharField()
+
+    def validate(self, data):
+        email = data.get('email')
+        code = data.get('code')
+
+        try:
+            user = MyApiUser.objects.get(email=email)
+        except MyApiUser.DoesNotExist:
+            raise serializers.ValidationError("User with this email does not exist.")
+
+        if user.verification_code != code:
+            raise serializers.ValidationError("Invalid verification code.")
+        
+        if user.code_expiry < timezone.now():
+            raise serializers.ValidationError("Verification code has expired.")
+        
+        data['user'] = user
+        return data
+
+    def save(self):
+        email = self.validated_data['email']
+        user = MyApiUser.objects.get(email=email)
+        user.email_verified = True
+        user.verification_code = None
+        user.code_expiry = None
+        user.save()
+        return user
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
