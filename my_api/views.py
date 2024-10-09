@@ -334,6 +334,8 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
 
         if parent_id:
             parent_comment = get_object_or_404(Comment, id=parent_id)
+            if parent_comment.issue != issue:
+                return self.error_response(message="Parent comment must belong to the same issue", errors="ParentIssueNotSame",status_code=status.HTTP_400_BAD_REQUEST)
             serializer.save(issue=parent_comment.issue, parent=parent_comment, user=request.user)
         else:
             serializer.save(issue=issue, user=request.user)

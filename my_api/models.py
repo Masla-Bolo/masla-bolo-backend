@@ -65,6 +65,7 @@ class Issue(models.Model):
         ('sewerage', 'Sewerage'),
         ('stormwater', 'Stormwater'),
         ('roads_potholes', 'Roads & Potholes'),
+        ('road_safety', 'Road Safety'),
         ('street_lighting', 'Street Lighting'),
         ('public_transportation', 'Public Transportation'),
         ('parks_recreation', 'Parks & Recreation'),
@@ -83,6 +84,7 @@ class Issue(models.Model):
         ('zoning_planning', 'Zoning & Planning'),
         ('sidewalk_maintenance', 'Sidewalk Maintenance'),
         ('public_toilets', 'Public Toilets'),
+        ('public_safety', 'Public Safety'),
         ('other', 'Other'),
     ]
     
@@ -105,6 +107,9 @@ class Issue(models.Model):
     comments_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)  # Automatically set on creation
     updated_at = models.DateTimeField(auto_now=True)  # Automatically update when modified
+
+    class Meta:
+        ordering = ['-created_at'] # order comments by recent by default
 
     def __str__(self):
         return self.title
@@ -135,7 +140,7 @@ class Comment(models.Model):
     is_edited = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ['-created_at'] # order comments by recent by default
+        ordering = ['-likes_count'] # order comments by recent by default
 
     def __str__(self):
         return f'Comment by {self.user.username} on {self.issue.title}'
