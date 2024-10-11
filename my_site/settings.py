@@ -64,6 +64,7 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 25,
+    'EXCEPTION_HANDLER': 'my_api.utils.custom_exception_handler',
 }
 
 SIMPLE_JWT = {
