@@ -26,7 +26,7 @@ def custom_exception_handler(exc, context):
         return Response({
             'success': 'False',
             'message': response.data["detail"],
-            'error': response.data["messages"],
+            'error': response.data,
             'status_code': status.HTTP_400_BAD_REQUEST
         })
 
