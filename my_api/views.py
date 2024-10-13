@@ -1,4 +1,5 @@
 import random
+import time
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -13,12 +14,13 @@ from rest_framework import filters, status
 from django_filters.rest_framework import DjangoFilterBackend
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
 from .mixins import StandardResponseMixin
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 from datetime import timedelta
+from django.db import connection
 
 class RegisterView(generics.CreateAPIView, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
@@ -117,53 +119,62 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     serializer_class = IssueSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ['issue_status']
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        categories = self.request.query_params.get('categories', None)
-        if categories:
-            queryset = queryset.filter(categories__contains=[categories])
-
-        return queryset
-    
     filter_backends = [
         DjangoFilterBackend, 
         filters.SearchFilter, 
         filters.OrderingFilter
     ]
-
-    
     search_fields = ['title', 'description']
-    
     ordering_fields = ['created_at', 'likes_count', 'comments_count', 'title']
     ordering = ['-created_at']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = IssueSerializer.setup_eager_loading(queryset, self.request.user)
+        categories = self.request.query_params.get('categories', None)
+        if categories:
+            categories = categories.split(",")
+            category_filter = Q()
+            for category in categories:
+                category_filter |= Q(categories__contains=[category])
+            queryset = queryset.filter(category_filter)
+
+        return queryset
 
 
     def get_permissions(self):
         """
         Instantiates and returns the list of permissions that this view requires.
         """
-        if self.action == 'list':
-            permission_classes = [AllowAny]
-        elif self.action == 'retrieve':
-            permission_classes = [IsAuthenticated]
-        elif self.action in ['create', 'update', 'partial_update', 'destroy']:
-            permission_classes = [IsAuthenticated, IsUser]
-        elif self.action == 'complete':
-            permission_classes = [IsAuthenticated, IsUser]
-        elif self.action == 'approve':
-            permission_classes = [IsAdmin]
-        else:
-            permission_classes = [IsAuthenticated]
+        action_permissions = {
+            'list': [AllowAny],
+            'retrieve': [IsAuthenticated],
+            'create': [IsAuthenticated, IsUser],
+            'update': [IsAuthenticated, IsUser],
+            'partial_update': [IsAuthenticated, IsUser],
+            'destroy': [IsAuthenticated, IsUser],
+            'complete': [IsAuthenticated, IsUser],
+            'approve': [IsAdmin],
+        }
+        
+        permission_classes = action_permissions.get(self.action, [IsAuthenticated])
         return [permission() for permission in permission_classes]
     
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
+        start_time = time.time()
+        queryset = self.get_queryset()
+        query_time = time.time() - start_time
+        print(f"Query time: {query_time}")
+        
         page = self.paginate_queryset(queryset)
 
         if page is not None:
+            start_time = time.time()
             serializer = self.get_serializer(page, many=True)
+            serialization_time = time.time() - start_time
+            print(f"Serialization time: {serialization_time}")
             paginated_data = self.get_paginated_response(serializer.data).data
+            print(f"Number of queries: {len(connection.queries)}")
             return self.success_response(
                 message="Fetched Successfully!!", 
                 data=paginated_data,
@@ -179,21 +190,16 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
 
     @action(detail=False, permission_classes=[IsAuthenticated, IsUser])
     def my(self, request, *args, **kwargs):
-        user = request.user
-        queryset = self.filter_queryset(self.get_queryset().filter(user=user))
+        queryset = self.get_queryset().filter(user=request.user)
         page = self.paginate_queryset(queryset)
         
         if page is not None:
-            serializer = self.get_serializer(page, many=True, context={'user': user})
+            serializer = self.get_serializer(page, many=True)
             paginated_data = self.get_paginated_response(serializer.data).data
-            return self.success_response(
-                message="Fetched Successfully!!", 
-                data=paginated_data,
-                status_code=status.HTTP_200_OK
-            )
+            return self.success_response(message="Fetched Your Issues Successfully!!", data=paginated_data)
         
-        serializer = self.get_serializer(queryset, many=True, context={'user': user})
-        return self.success_response(message="Successful!!", data=serializer.data, status_code=status.HTTP_200_OK)
+        serializer = self.get_serializer(queryset, many=True)
+        return self.success_response(message="Fetched Your Issues Successfully!!", data=serializer.data)
 
 
     def retrieve(self, request, *args, **kwargs):
@@ -209,6 +215,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if request.user != issue.user or request.user.role != MyApiUser.USER:
             return self.error_response(
                 message="Only the issue creator can mark this issue as complete",
+                errors="User Doesn't Match the Issue Creator",
                 status_code=status.HTTP_403_FORBIDDEN
             )
         
@@ -216,6 +223,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if issue.issue_status != Issue.APPROVED:
             return self.error_response(
                 message="Issue is not approved, cannot be marked as complete",
+                errors="Issue Not Approved",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         
@@ -240,7 +248,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         issue.save()
         serializer = self.get_serializer(issue)
         return self.success_response(
-            message="Issue approved",
+            message="Issue Approved",
             data=serializer.data,
             status_code=status.HTTP_200_OK
         )
@@ -290,17 +298,25 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         like.delete()
         issue.likes_count -= 1
         issue.save()
-        return self.success_response(message="Like removed", data={"likes_count": issue.likes_count}, status_code=status.HTTP_200_OK)
+        return self.success_response(message="Issue Unliked", data={"likes_count": issue.likes_count}, status_code=status.HTTP_200_OK)
     
     @action(detail=False, permission_classes=[IsAuthenticated])
     def liked_issues(self, request):
         user = request.user
-        liked_issues = Issue.objects.filter(likes__user=user)
+        
+        # Prefetch related fields and optimize the query
+        liked_issues = Issue.objects.filter(likes__user=user).prefetch_related('likes', 'comments')
+        
+        # Optionally use a custom setup_eager_loading method if defined in your serializer
+        liked_issues = IssueSerializer.setup_eager_loading(liked_issues, user)
+
         page = self.paginate_queryset(liked_issues)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             paginated_data = self.get_paginated_response(serializer.data).data
+            print(f"Number of queries: {len(connection.queries)}")
             return self.success_response(message="Issues Liked by the User", data=paginated_data, status_code=status.HTTP_200_OK)
+
         serializer = self.get_serializer(liked_issues, many=True)
         return self.success_response(message="Issues Liked by the User", data=serializer.data, status_code=status.HTTP_200_OK)
 
@@ -315,14 +331,15 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         """
         Instantiates and returns the list of permissions that this view requires.
         """
-        if self.action == 'list':
-            permission_classes = [AllowAny]
-        elif self.action == 'retrieve':
-            permission_classes = [IsAuthenticated]
-        elif self.action in ['create', 'update', 'partial_update', 'destroy']:
-            permission_classes = [IsAuthenticated]
-        else:
-            permission_classes = [IsAuthenticated]
+        action_permissions = {
+            'list': [AllowAny],
+            'retrieve': [IsAuthenticated],
+            'create': [IsAuthenticated],
+            'update': [IsAuthenticated],
+            'partial_update': [IsAuthenticated],
+            'destroy': [IsAuthenticated],
+        }
+        permission_classes = action_permissions.get(self.action, [IsAuthenticated])
         return [permission() for permission in permission_classes]
     
     def create(self, request, *args, **kwargs):
@@ -336,8 +353,12 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             parent_comment = get_object_or_404(Comment, id=parent_id)
             if parent_comment.issue != issue:
                 return self.error_response(message="Parent comment must belong to the same issue", errors="ParentIssueNotSame",status_code=status.HTTP_400_BAD_REQUEST)
+            issue.comments_count += 1
+            issue.save()
             serializer.save(issue=parent_comment.issue, parent=parent_comment, user=request.user)
         else:
+            issue.comments_count += 1
+            issue.save()
             serializer.save(issue=issue, user=request.user)
 
         headers = self.get_success_headers(serializer.data)
@@ -357,6 +378,7 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             paginated_data = self.get_paginated_response(serializer.data).data
+            print(f"Number of queries: {len(connection.queries)}")
             return self.success_response(message="Comment List", data=paginated_data, status_code=status.HTTP_200_OK)
         serializer = self.get_serializer(queryset, many=True)
         return self.success_response(message="Comment List", data=serializer.data, status_code=status.HTTP_200_OK)
@@ -368,10 +390,13 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        issue = get_object_or_404(Issue, id=request.data.get("issueId"))
         
         # Allow deletion by the comment's author or an admin
         if request.user == instance.user or request.user.role == MyApiUser.ADMIN:
             self.perform_destroy(instance)
+            issue.comments_count -= 1
+            issue.save()
             return self.success_response(message="Comment deleted", data={}, status=status.HTTP_204_NO_CONTENT)
         return self.error_response(message="Permission denied", data={}, status=status.HTTP_403_FORBIDDEN)
 
@@ -401,14 +426,15 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         """
         Instantiates and returns the list of permissions that this view requires.
         """
-        if self.action == 'list':
-            permission_classes = [IsAdmin]
-        elif self.action == 'retrieve':
-            permission_classes = [IsUser]
-        elif self.action in ['create', 'update', 'partial_update', 'destroy']:
-            permission_classes = [IsAuthenticated, IsUser, IsAdmin, IsOfficial]
-        else:
-            permission_classes = [IsAuthenticated]
+        action_permissions = {
+            'list': [IsAdmin],
+            'retrieve': [IsUser],
+            'create': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+            'update': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+            'partial_update': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+            'destroy': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+        }
+        permission_classes = action_permissions.get(self.action, [IsAuthenticated])
         return [permission() for permission in permission_classes]
     
     def list(self, request, *args, **kwargs):

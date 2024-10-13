@@ -3,6 +3,7 @@ from rest_framework import serializers
 from .models import MyApiUser, Issue, Like, Comment
 from django.contrib.auth import authenticate
 from django.utils import timezone
+from django.db.models import Exists, OuterRef
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
@@ -20,17 +21,12 @@ class RegisterSerializer(serializers.ModelSerializer):
             )
             return user
         else:
-            # Generate random verification code and set code expiry (5 minutes from now)
-            # verification_code = random.randint(100000, 999999)
-            # code_expiry = timezone.now() + timezone.timedelta(minutes=5)
-
-            # Create user with email not verified
             user = MyApiUser.objects.create_user(
                 email=validated_data['email'],
                 username=validated_data['username'],
                 password=validated_data['password'],
                 role=validated_data['role'],
-                email_verified=False,  # Email is not verified yet
+                email_verified=False,
                 verification_code=None,
                 code_expiry=None
             )
@@ -82,7 +78,6 @@ class LoginSerializer(serializers.Serializer):
         # Return the user instance
         return {'user': user}
 
-# Serializer for listing user details
 class MyApiUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = MyApiUser
@@ -130,31 +125,32 @@ class CommentSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 class IssueSerializer(serializers.ModelSerializer):
-    latitude = serializers.DecimalField(max_digits=9, decimal_places=6)
-    longitude = serializers.DecimalField(max_digits=9, decimal_places=6)
-    user=MyApiUserSerializer(read_only=True)
-    comments = CommentSerializer(many=True, read_only=True)
+    user = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
-    comments_count = serializers.SerializerMethodField()
-
+    
     class Meta:
         model = Issue
-        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments", "comments_count","is_liked", 'created_at', 'updated_at']
-        read_only_fields = ['user', 'created_at', 'updated_at', 'comments_count'] # can't be updated via api
-    
+        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments_count", "is_liked", 'created_at', 'updated_at']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'comments_count']
 
-    def get_comments_count(self, obj):
-        return obj.comments.count()
-    
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-        if 'comments' in representation:
-            representation.pop('comments')
-        return representation
+    def get_user(self, obj):
+        return {
+            'id': obj.user.id,
+            'username': obj.user.username
+        }
 
     def get_is_liked(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return Like.objects.filter(user=request.user, issue=obj).exists()
-        return False
+        user = self.context['request'].user
+        return getattr(obj, 'is_liked', False)
+
+    @classmethod
+    def setup_eager_loading(cls, queryset, user):
+        # Prefetch related objects
+        queryset = queryset.select_related('user')
+        
+        # Annotate is_liked
+        like_exists = Exists(Like.objects.filter(user=user, issue=OuterRef('pk')))
+        queryset = queryset.annotate(is_liked=like_exists)
+        
+        return queryset
 
