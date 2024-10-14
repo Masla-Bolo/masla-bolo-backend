@@ -139,6 +139,10 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
                 category_filter |= Q(categories__contains=[category])
             queryset = queryset.filter(category_filter)
 
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            queryset = queryset.order_by(ordering)
+        
         return queryset
 
 
