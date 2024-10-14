@@ -194,7 +194,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
 
     @action(detail=False, permission_classes=[IsAuthenticated, IsUser])
     def my(self, request, *args, **kwargs):
-        queryset = self.get_queryset().filter(user=request.user)
+        queryset = self.filter_queryset(self.get_queryset().filter(user=request.user))
         page = self.paginate_queryset(queryset)
         
         if page is not None:
