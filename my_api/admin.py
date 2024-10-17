@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import MyApiUser
+from .models import *
 
 class MyApiUserAdmin(admin.ModelAdmin):
     # Fields to display in the admin list view

@@ -9,10 +9,10 @@ class StandardResponseMixin:
             "code": status_code
         }, status=status_code)
 
-    def error_response(self, message, errors=None, status_code=400):
+    def error_response(self, message, data=None, status_code=400):
         return Response({
             "success": "False",
             "message": message,
-            "errors": errors,
+            "data": data,
             "code": status_code
         }, status=status_code)
