@@ -331,6 +331,26 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Apply eager loading
+        queryset = CommentSerializer.setup_eager_loading(queryset, self.request)
+        # Filter by issue ID if provided
+        issue_id = self.request.query_params.get('issueId')
+        if issue_id:
+            queryset = queryset.filter(issue_id=issue_id)
+
+
+        # Filter parent comments or comments with replies
+        queryset = queryset.filter(
+            Q(parent__isnull=True) | Q(replies_count__gt=0)
+        )
+
+        # Order by likes_count (descending) and then by created_at (descending)
+        queryset = queryset.order_by('-likes_count', '-created_at')
+
+        return queryset
+
     def get_permissions(self):
         """
         Instantiates and returns the list of permissions that this view requires.
@@ -369,22 +389,20 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         return self.success_response(message="Comment Created Successfully!!", data=serializer.data, status_code=status.HTTP_201_CREATED)
 
     def list(self, request, *args, **kwargs):
-        issue_id = request.query_params.get('issueId')
-        queryset = self.filter_queryset(self.get_queryset())
-        if issue_id:
-            queryset = queryset.filter(issue_id=issue_id)
-
-        queryset = queryset.annotate(replies_count=Count('replies')).filter(
-            Q(parent__isnull=True) | Q(replies_count__gt=0)
-        )
-        queryset = queryset.order_by('-created_at')
+        
+        queryset = self.get_queryset()
+        
         page = self.paginate_queryset(queryset)
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
+            serializer = self.get_serializer(page, many=True, context={'request': request})
             paginated_data = self.get_paginated_response(serializer.data).data
             print(f"Number of queries: {len(connection.queries)}")
             return self.success_response(message="Comment List", data=paginated_data, status_code=status.HTTP_200_OK)
-        serializer = self.get_serializer(queryset, many=True)
+
+        # If not paginating, serialize the full queryset
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
+        print(f"Number of queries: {len(connection.queries)}")
+
         return self.success_response(message="Comment List", data=serializer.data, status_code=status.HTTP_200_OK)
 
     def retrieve(self, request, *args, **kwargs):
@@ -409,7 +427,7 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         comment = self.get_object()
         user = request.user
         like, created = Like.objects.get_or_create(user=user, comment=comment)
-        
+        print(f"Number of queries: {len(connection.queries)}")
         if created:
             comment.likes_count += 1
             comment.save()

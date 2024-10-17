@@ -3,7 +3,8 @@ from rest_framework import serializers
 from .models import MyApiUser, Issue, Like, Comment
 from django.contrib.auth import authenticate
 from django.utils import timezone
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Count, Prefetch
+# from django.db.models.functions import Coalesce
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
@@ -97,16 +98,13 @@ class RecursiveSerializer(serializers.Serializer):
 class CommentSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     replies = RecursiveSerializer(many=True, read_only=True)
-    likes_count = serializers.IntegerField(read_only=True)
     is_liked = serializers.SerializerMethodField()
-
+    
     class Meta:
         model = Comment
-        fields = ['id', 'user', 'issue', 'parent', 'content', 'created_at', 'updated_at', 'likes_count', 'is_edited', 'replies', 'is_liked', "reply_to"]
-        read_only_fields = ['user', 'issue', 'created_at', 'updated_at', 'likes_count', 'is_edited']
+        fields = ['id', 'user', 'issue', 'parent', 'content', 'created_at', 'updated_at', 'likes_count', 'is_edited', 'replies', 'is_liked', 'reply_to']
+        read_only_fields = ['user', 'issue', 'created_at', 'updated_at', 'likes_count', 'is_edited', 'is_liked']
 
-    # will get the user data needed and should be the same name as the 'user' variable
-    # future enhancements: profile pic
     def get_user(self, obj):
         return {
             'id': obj.user.id,
@@ -115,14 +113,29 @@ class CommentSerializer(serializers.ModelSerializer):
         }
 
     def get_is_liked(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return Like.objects.filter(user=request.user, comment=obj).exists()
-        return False
+        return getattr(obj, 'is_liked', False)
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
+
+    @classmethod
+    def setup_eager_loading(cls, queryset, request):
+        likes_subquery = Like.objects.filter(user=request.user, comment=OuterRef('pk'))
+        
+        # Prefetch replies for multiple levels (nested replies)
+        replies_queryset = Comment.objects.select_related('user').prefetch_related(
+            Prefetch('replies', queryset=Comment.objects.select_related('user'))
+        )
+        
+        queryset = queryset.select_related('user', 'issue', 'parent', 'reply_to').prefetch_related(
+            Prefetch('replies', queryset=replies_queryset)
+        ).annotate(
+            replies_count=Count('replies'),
+            is_liked=Exists(likes_subquery)
+        )
+
+        return queryset
 
 class IssueSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
