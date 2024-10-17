@@ -44,7 +44,7 @@ class SendEmailView(APIView, StandardResponseMixin):
         user = MyApiUser.objects.get(email=email)
 
         if user.email_verified:
-            self.error_response(message="Email is Already Verified. Try Logging in.", errors="AccountExists", status_code=status.HTTP_100_CONTINUE)
+            self.error_response(message="Email is Already Verified. Try Logging in.", data="AccountExists", status_code=status.HTTP_100_CONTINUE)
         
         # Generate a 6-digit verification code
         verification_code = str(random.randint(100000, 999999))
@@ -89,7 +89,7 @@ class VerifyEmailView(APIView, StandardResponseMixin):
                 'user': user_data
             }, status_code=status.HTTP_200_OK)
                 # return self.success_response(message='Email verified successfully!', data={"Success"}, status_code=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
         
 
 class LoginView(generics.GenericAPIView, StandardResponseMixin):
@@ -97,21 +97,23 @@ class LoginView(generics.GenericAPIView, StandardResponseMixin):
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
 
-        if not user.email_verified:
-            return self.error_response(message="Email Not Verified", errors={"VerificationError"}, status_code=status.HTTP_401_UNAUTHORIZED)
+            if not user.email_verified:
+                return self.error_response(message="Email Not Verified", data={"VerificationError"}, status_code=status.HTTP_401_UNAUTHORIZED)
 
-        update_last_login(None, user)
+            update_last_login(None, user)
 
-        refresh = RefreshToken.for_user(user)
-        user_data = MyApiUserSerializer(user).data
+            refresh = RefreshToken.for_user(user)
+            user_data = MyApiUserSerializer(user).data
 
-        return self.success_response(message="Login Successful!",data={
-            'token': str(refresh.access_token),
-            'user': user_data
-        }, status_code=status.HTTP_200_OK)
+            return self.success_response(message="Login Successful!",data={
+                'token': str(refresh.access_token),
+                'user': user_data
+            }, status_code=status.HTTP_200_OK)
+        
+        return self.error_response(message="Incorrect Credentials", data={"VerificationError"}, status_code=status.HTTP_401_UNAUTHORIZED)
 
 # Issues
 class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
@@ -139,10 +141,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
                 category_filter |= Q(categories__contains=[category])
             queryset = queryset.filter(category_filter)
 
-        ordering = self.request.query_params.get('ordering')
-        if ordering:
-            queryset = queryset.order_by(ordering)
-        
         return queryset
 
 
@@ -166,7 +164,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     
     def list(self, request, *args, **kwargs):
         start_time = time.time()
-        queryset = self.get_queryset()
+        queryset = self.filter_queryset(self.get_queryset())
         query_time = time.time() - start_time
         print(f"Query time: {query_time}")
         
@@ -219,7 +217,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if request.user != issue.user or request.user.role != MyApiUser.USER:
             return self.error_response(
                 message="Only the issue creator can mark this issue as complete",
-                errors="User Doesn't Match the Issue Creator",
+                data="User Doesn't Match the Issue Creator",
                 status_code=status.HTTP_403_FORBIDDEN
             )
         
@@ -227,7 +225,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if issue.issue_status != Issue.APPROVED:
             return self.error_response(
                 message="Issue is not approved, cannot be marked as complete",
-                errors="Issue Not Approved",
+                data="Issue Not Approved",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         
@@ -272,10 +270,10 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         ).first()
 
         if existing_issue:
-            return self.success_response(message="Same Issue Exists from within your Area", data={
+            return self.error_response(message="Same Issue Exists from within your Area", data={
                 'id': existing_issue.id,
                 'detail': 'This Issue Already Exists'
-            }, status_code=status.HTTP_200_OK)
+            }, status_code=status.HTTP_400_BAD_REQUEST)
 
         serializer.save(user=self.request.user)
         headers = self.get_success_headers(serializer.data)
@@ -286,7 +284,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if request.user == instance.user or request.user.role == MyApiUser.ADMIN:
             self.perform_destroy(instance)
             return self.success_response(message="Issue deleted successfully", data={}, status_code=status.HTTP_204_NO_CONTENT)
-        return self.error_response(message="You do not have permission to delete this issue", errors="PermissionError", status_code=status.HTTP_403_FORBIDDEN)
+        return self.error_response(message="You do not have permission to delete this issue", data="PermissionError", status_code=status.HTTP_403_FORBIDDEN)
     
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def like(self, request, pk=None):
@@ -376,7 +374,7 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if parent_id:
             parent_comment = get_object_or_404(Comment, id=parent_id)
             if parent_comment.issue != issue:
-                return self.error_response(message="Parent comment must belong to the same issue", errors="ParentIssueNotSame",status_code=status.HTTP_400_BAD_REQUEST)
+                return self.error_response(message="Parent comment must belong to the same issue", data="ParentIssueNotSame",status_code=status.HTTP_400_BAD_REQUEST)
             issue.comments_count += 1
             issue.save()
             serializer.save(issue=parent_comment.issue, parent=parent_comment, user=request.user)
