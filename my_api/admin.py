@@ -7,11 +7,11 @@ class MyApiUserAdmin(ModelAdmin):
     list_display = ('username', 'email', 'is_active', "is_superuser", 'role', "email_verified")
     search_fields = ('username', 'email')
     list_filter = ('is_active', 'is_superuser', 'last_login', "email_verified")
-    readonly_fields = ('last_login',)
+    readonly_fields = ('last_login', 'password', 'created_at')
     fieldsets = (
-        (None, {'fields': ('username', 'email', 'password')}),
+        (None, {'fields': ('username', 'email', 'password', 'role')}),
         ('Permissions', {'fields': ('is_active', 'is_superuser', "email_verified")}),
-        ('Important dates', {'fields': ('last_login',)}),
+        ('Important dates', {'fields': ('created_at', 'last_login')}),
     )
     add_fieldsets = (
         (None, {
