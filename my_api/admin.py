@@ -1,38 +1,70 @@
 from django.contrib import admin
-from .models import *
+from unfold.sites import UnfoldAdminSite
+from unfold.admin import ModelAdmin
+from .models import MyApiUser, Issue, Comment, Like
 
-# class MyApiUserAdmin(admin.ModelAdmin):
-#     # Fields to display in the admin list view
-#     list_display = ('username', 'email', 'is_active', "is_superuser", 'role', "email_verified")
-    
-#     # Fields to search in the admin interface
-#     search_fields = ('username', 'email')
-    
-#     # Filters to apply on the admin page
-#     list_filter = ('is_active', 'is_superuser', 'last_login', "email_verified")
-    
-#     # Read-only fields (must be a list or tuple)
-#     readonly_fields = ('last_login',)
-    
-#     # Fieldsets to control the layout of the admin form
-#     fieldsets = (
-#         (None, {'fields': ('username', 'email', 'password')}),
-#         ('Permissions', {'fields': ('is_active', 'is_superuser', "email_verified")}),
-#         ('Important dates', {'fields': ('last_login',)}),
-#     )
-    
-#     # This controls what fields are displayed when adding a new user
-#     add_fieldsets = (
-#         (None, {
-#             'classes': ('wide',),
-#             'fields': ('username', 'email', 'role', 'password'),
-#         }),
-#     )
-    
-#     # This ensures the password is hashed correctly when saving a new user
-#     def save_model(self, request, obj, form, change):
-#         if not change:  # If the object is new
-#             obj.set_password(form.cleaned_data["password"])
-#         super().save_model(request, obj, form, change)
+class MyApiUserAdmin(ModelAdmin):
+    list_display = ('username', 'email', 'is_active', "is_superuser", 'role', "email_verified")
+    search_fields = ('username', 'email')
+    list_filter = ('is_active', 'is_superuser', 'last_login', "email_verified")
+    readonly_fields = ('last_login', 'password', 'created_at')
+    fieldsets = (
+        (None, {'fields': ('username', 'email', 'password', 'role')}),
+        ('Permissions', {'fields': ('is_active', 'is_superuser', "email_verified")}),
+        ('Important dates', {'fields': ('created_at', 'last_login')}),
+    )
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('username', 'email', 'role', 'password'),
+        }),
+    )
+    def save_model(self, request, obj, form, change):
+        if not change:  
+            obj.set_password(form.cleaned_data["password"])
+        super().save_model(request, obj, form, change)
 
-admin.site.register([MyApiUser, Issue, Like, Comment])
+class IssueAdmin(ModelAdmin):
+    list_display = ('title', 'issue_status', 'created_at', 'user')
+    
+    list_filter = ('issue_status', 'created_at')
+    
+    search_fields = ('title', 'description')
+    
+    readonly_fields = ('created_at', 'updated_at')
+
+    fieldsets = (
+        (None, {'fields': ('title', 'description', 'user', 'categories', 'images')}),
+        ('Status', {'fields': ('issue_status',)}),
+        ('Location', {'fields': ('latitude', 'longitude')}),
+        ('Metadata', {'fields': ('likes_count', 'comments_count', 'is_anonymous', 'created_at', 'updated_at')}),
+    )
+
+class CommentAdmin(ModelAdmin):
+    list_display = ('issue', 'user', 'content', 'created_at', 'likes_count')
+    search_fields = ('content',)
+    list_filter = ('created_at',)
+    readonly_fields = ('created_at', 'updated_at')
+
+class LikeAdmin(ModelAdmin):
+    list_display = ('issue', 'user', 'created_at')
+    search_fields = ('issue__title',)
+    list_filter = ('created_at',)
+    readonly_fields = ('created_at',)
+
+class CustomAdminSite(UnfoldAdminSite):
+    site_header = "Masla Bolo Admin"
+    site_title = "Masla Bolo Admin"
+    index_title = "Welcome to Masla Bolo"
+
+    def index(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['custom_message'] = "Welcome to the custom dashboard!"
+        return super().index(request, extra_context=extra_context)
+
+custom_admin_site = CustomAdminSite(name='custom_admin')
+
+custom_admin_site.register(MyApiUser, MyApiUserAdmin)
+custom_admin_site.register(Issue, IssueAdmin)
+custom_admin_site.register(Comment, CommentAdmin)
+custom_admin_site.register(Like, LikeAdmin)

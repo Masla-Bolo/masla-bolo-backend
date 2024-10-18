@@ -37,6 +37,7 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
     verification_code = models.CharField(max_length=6, null=True, blank=True)
     code_expiry = models.DateTimeField(null=True, blank=True)
     username = models.CharField(max_length=255, unique=True)
+    profile_image = models.CharField(max_length=500, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=USER)  # Role field
@@ -98,7 +99,7 @@ class Issue(models.Model):
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
-    description = models.CharField(max_length=150)  # Limit to 150 characters
+    description = models.CharField(max_length=280)  # Limit to 150 characters
     categories = models.JSONField()
     images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
     issue_status = models.CharField(max_length=15, choices=ISSUE_STATUS, default=NOT_APPROVED) # Track completion status
@@ -140,7 +141,7 @@ class Comment(models.Model):
     is_edited = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ['-likes_count'] # order comments by recent by default
+        ordering = ['-likes_count'] # order comments by likes_count by default
 
     def __str__(self):
         return f'Comment by {self.user.username} on {self.issue.title}'

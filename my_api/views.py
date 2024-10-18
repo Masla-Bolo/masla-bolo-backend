@@ -450,9 +450,9 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             'list': [IsAdmin],
             'retrieve': [IsUser],
             'create': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
-            'update': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+            'update': [IsAuthenticated],
             'partial_update': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
-            'destroy': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+            'destroy': [IsAuthenticated],
         }
         permission_classes = action_permissions.get(self.action, [IsAuthenticated])
         return [permission() for permission in permission_classes]
@@ -475,7 +475,7 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = self.get_serializer(instance)
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         instance.save()
         return self.success_response(message="User Updated", data=serializer.data)
@@ -484,5 +484,5 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         instance = self.get_object()
         if request.user == instance.user or request.user.role == MyApiUser.ADMIN:
             self.perform_destroy(instance)
-            return self.success_response(message="Account deleted successfully", status=status.HTTP_204_NO_CONTENT)
+            return self.success_response(message="Account deleted successfully", data=f"Account with email {request.user.email} is deleted", status=status.HTTP_204_NO_CONTENT)
         return self.error_response(message="You do not have permission to delete this account", status=status.HTTP_403_FORBIDDEN)
