@@ -8,30 +8,36 @@ from django.db.models import Exists, OuterRef, Count, Prefetch
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
+    profile_image = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = MyApiUser
-        fields = ["id", 'email', "username", 'password', 'role']
+        fields = ["id", "email", "username", "password", "role", "profile_image"]
 
     def create(self, validated_data):
-        if validated_data['role'] == "admin":
+        role = validated_data.get('role', 'user')  # Default to 'user' if role is not provided
+
+        if role == "admin":
             user = MyApiUser.objects.create_superuser(
                 email=validated_data['email'],
                 username=validated_data['username'],
                 password=validated_data['password'],
             )
-            return user
         else:
             user = MyApiUser.objects.create_user(
                 email=validated_data['email'],
                 username=validated_data['username'],
                 password=validated_data['password'],
-                role=validated_data['role'],
+                role=role,
                 email_verified=False,
                 verification_code=None,
-                code_expiry=None
+                code_expiry=None,
             )
-            return user
+        if 'profile_image' in validated_data:
+            user.profile_image = validated_data['profile_image']
+            user.save()
+
+        return user
 
 class VerifyEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -82,7 +88,7 @@ class LoginSerializer(serializers.Serializer):
 class MyApiUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = MyApiUser
-        fields = ['id', 'email', 'username', "role", 'is_active', 'created_at', 'updated_at']  # Include the new fields
+        fields = ['id', 'email', 'username', "role", 'is_active', 'profile_image','created_at', 'updated_at']  # Include the new fields
 
 class LikeSerializer(serializers.ModelSerializer):
     class Meta:
