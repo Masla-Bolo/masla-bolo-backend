@@ -42,6 +42,7 @@ AUTHENTICATION_BACKENDS = (
 # Application definition
 
 INSTALLED_APPS = [
+    'unfold',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -152,6 +153,16 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
+
+
+UNFOLD = {
+    'DISPLAY_USER_AVATAR': True,
+    'SIDEBAR_MENU_ITEMS': [
+        {'name': 'Dashboard', 'url': '/admin/', 'icon': 'dashboard'},
+        {'name': 'MyApiUser', 'url': '/admin/myapp/myapiuser/', 'icon': 'user'},
+        # Add your custom items here
+    ],
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
