@@ -40,18 +40,18 @@ class RegisterView(generics.CreateAPIView, StandardResponseMixin):
 
 class SendEmailView(APIView, StandardResponseMixin):
     def get(self, request, refresh_code=False):
-        email = request.data.get('email')
+        email = self.request.query_params.get('email')
         user = MyApiUser.objects.get(email=email)
 
         if user.email_verified:
             self.error_response(message="Email is Already Verified. Try Logging in.", data="AccountExists", status_code=status.HTTP_100_CONTINUE)
         
         # Generate a 6-digit verification code
-        verification_code = str(random.randint(100000, 999999))
+        verification_code = str(random.randint(1000, 9999))
         
         # Store the code and expiry time in user object (adjust model accordingly)
         user.verification_code = verification_code
-        user.code_expiry = timezone.now() + timedelta(minutes=15)  # Code expires in 5 minutes
+        user.code_expiry = timezone.now() + timedelta(minutes=5)  # Code expires in 5 minutes
         user.save()
         
         # Render HTML template
@@ -88,7 +88,6 @@ class VerifyEmailView(APIView, StandardResponseMixin):
                 'token': str(refresh.access_token),
                 'user': user_data
             }, status_code=status.HTTP_200_OK)
-                # return self.success_response(message='Email verified successfully!', data={"Success"}, status_code=status.HTTP_200_OK)
         return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
         
 
@@ -99,15 +98,16 @@ class LoginView(generics.GenericAPIView, StandardResponseMixin):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-
-            if not user.email_verified:
-                return self.error_response(message="Email Not Verified", data={"VerificationError"}, status_code=status.HTTP_401_UNAUTHORIZED)
-
-            update_last_login(None, user)
-
             refresh = RefreshToken.for_user(user)
             user_data = MyApiUserSerializer(user).data
 
+            if not user.email_verified:
+                return self.success_response(message="Email Not Verified!",data={
+                    'user': user_data
+                }, status_code=status.HTTP_200_OK)
+            
+            update_last_login(None, user)
+            
             return self.success_response(message="Login Successful!",data={
                 'token': str(refresh.access_token),
                 'user': user_data

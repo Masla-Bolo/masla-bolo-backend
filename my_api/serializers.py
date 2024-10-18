@@ -82,7 +82,7 @@ class LoginSerializer(serializers.Serializer):
 class MyApiUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = MyApiUser
-        fields = ['id', 'email', 'username', "role", 'is_active', 'created_at', 'updated_at']  # Include the new fields
+        fields = ['id', 'email', 'username', "role", 'is_active', 'created_at', 'updated_at', "email_verified"]  # Include the new fields
 
 class LikeSerializer(serializers.ModelSerializer):
     class Meta:
