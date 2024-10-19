@@ -18,9 +18,15 @@ from django.db.models import Q, Count, Prefetch
 from .mixins import StandardResponseMixin
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from firebase_admin import messaging
 from django.utils import timezone
 from datetime import timedelta
 from django.db import connection
+import firebase_admin
+from firebase_admin import credentials
+
+cred = credentials.Certificate("./service_account.json")
+firebase_admin.initialize_app(cred)
 
 class RegisterView(generics.CreateAPIView, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
