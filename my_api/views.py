@@ -18,15 +18,9 @@ from django.db.models import Q, Count, Prefetch
 from .mixins import StandardResponseMixin
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
-from firebase_admin import messaging
 from django.utils import timezone
 from datetime import timedelta
 from django.db import connection
-import firebase_admin
-from firebase_admin import credentials
-
-cred = credentials.Certificate("./service_account.json")
-firebase_admin.initialize_app(cred)
 
 class RegisterView(generics.CreateAPIView, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
@@ -478,16 +472,8 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         user = request.user
         serializer = self.get_serializer(user)
         return self.success_response(message="User Profile", data=serializer.data)
-    
-    # def update(self, request, *args, **kwargs):
-    #     instance = self.get_object()
-    #     serializer = self.get_serializer(instance, data=request.data, partial=True)
-    #     serializer.is_valid(raise_exception=True)
-    #     instance.save()
-    #     return self.success_response(message="User Updated", data=serializer.data)
 
     def update(self, request, *args, **kwargs):
-        # partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -504,3 +490,27 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             self.perform_destroy(instance)
             return self.success_response(message="Account deleted successfully", data=f"Account with email {request.user.email} is deleted", status=status.HTTP_204_NO_CONTENT)
         return self.error_response(message="You do not have permission to delete this account", status=status.HTTP_403_FORBIDDEN)
+    
+    @action(detail=False, methods=['patch'], url_path="fcmtoken")
+    def fcmtoken(self, request, pk=None):
+        user = request.user
+        fcmToken = request.data.get("token")
+
+        if not fcmToken:
+            return self.error_response(
+                message="Token is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user.fcm_tokens is None:
+            user.fcm_tokens = []
+
+        if fcmToken not in user.fcm_tokens:
+            user.fcm_tokens.append(fcmToken)
+            user.save()
+
+        return self.success_response(
+            message="FCM Token added successfully",
+            data={},
+            status_code=status.HTTP_200_OK
+        )

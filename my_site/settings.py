@@ -14,7 +14,11 @@ from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+import firebase_admin
+from firebase_admin import credentials
 
+cred = credentials.Certificate("./service_account.json")
+firebase_admin.initialize_app(cred)
 
 
 # Load environment variables from .env file

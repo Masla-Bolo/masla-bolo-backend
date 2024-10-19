@@ -37,6 +37,7 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
     verification_code = models.CharField(max_length=6, null=True, blank=True)
     code_expiry = models.DateTimeField(null=True, blank=True)
     username = models.CharField(max_length=255, unique=True)
+    fcm_tokens = models.JSONField()
     profile_image = models.CharField(max_length=500, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
