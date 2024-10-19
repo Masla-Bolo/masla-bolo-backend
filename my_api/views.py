@@ -47,7 +47,7 @@ class SendEmailView(APIView, StandardResponseMixin):
             self.error_response(message="Email is Already Verified. Try Logging in.", data="AccountExists", status_code=status.HTTP_100_CONTINUE)
         
         # Generate a 6-digit verification code
-        verification_code = str(random.randint(1000, 9999))
+        verification_code = str(random.randint(100000, 999999))
         
         # Store the code and expiry time in user object (adjust model accordingly)
         user.verification_code = verification_code
@@ -473,12 +473,24 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         serializer = self.get_serializer(user)
         return self.success_response(message="User Profile", data=serializer.data)
     
+    # def update(self, request, *args, **kwargs):
+    #     instance = self.get_object()
+    #     serializer = self.get_serializer(instance, data=request.data, partial=True)
+    #     serializer.is_valid(raise_exception=True)
+    #     instance.save()
+    #     return self.success_response(message="User Updated", data=serializer.data)
+
     def update(self, request, *args, **kwargs):
+        # partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        instance.save()
+        self.perform_update(serializer)
+
         return self.success_response(message="User Updated", data=serializer.data)
+
+    def perform_update(self, serializer):
+        serializer.save()
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
