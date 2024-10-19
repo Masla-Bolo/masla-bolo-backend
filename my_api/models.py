@@ -37,7 +37,7 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
     verification_code = models.CharField(max_length=6, null=True, blank=True)
     code_expiry = models.DateTimeField(null=True, blank=True)
     username = models.CharField(max_length=255, unique=True)
-    fcm_tokens = models.JSONField()
+    fcm_tokens = models.JSONField(default=list, blank=True)
     profile_image = models.CharField(max_length=500, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -98,8 +98,8 @@ class Issue(models.Model):
 
     title = models.CharField(max_length=255)
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
-    latitude = models.DecimalField(max_digits=9, decimal_places=6)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    latitude = models.DecimalField(max_digits=12, decimal_places=10)
+    longitude = models.DecimalField(max_digits=12, decimal_places=10)
     description = models.CharField(max_length=280)  # Limit to 150 characters
     categories = models.JSONField()
     images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
