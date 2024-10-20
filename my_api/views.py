@@ -47,7 +47,7 @@ class SendEmailView(APIView, StandardResponseMixin):
             self.error_response(message="Email is Already Verified. Try Logging in.", data="AccountExists", status_code=status.HTTP_100_CONTINUE)
         
         # Generate a 6-digit verification code
-        verification_code = str(random.randint(1000, 9999))
+        verification_code = str(random.randint(100000, 999999))
         
         # Store the code and expiry time in user object (adjust model accordingly)
         user.verification_code = verification_code
@@ -276,7 +276,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             }, status_code=status.HTTP_400_BAD_REQUEST)
 
         serializer.save(user=self.request.user)
-        headers = self.get_success_headers(serializer.data)
         return self.success_response(message="New Issue Created", data=serializer.data, status_code=status.HTTP_201_CREATED)
     
     def destroy(self, request, *args, **kwargs):
@@ -291,6 +290,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         issue = self.get_object()
         user = request.user
         like, created = Like.objects.get_or_create(user=user, issue=issue)
+        # self.send_push_notification(request.user.fcm_tokens, "Issue Like Called", "Body Of the Notification, Ps: You can only send a String")
         
         if created:
             issue.likes_count += 1
@@ -383,7 +383,6 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             issue.save()
             serializer.save(issue=issue, user=request.user)
 
-        headers = self.get_success_headers(serializer.data)
         return self.success_response(message="Comment Created Successfully!!", data=serializer.data, status_code=status.HTTP_201_CREATED)
 
     def list(self, request, *args, **kwargs):
@@ -472,7 +471,7 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         user = request.user
         serializer = self.get_serializer(user)
         return self.success_response(message="User Profile", data=serializer.data)
-    
+
     def update(self, request, *args, **kwargs):
         # partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -491,3 +490,27 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             self.perform_destroy(instance)
             return self.success_response(message="Account deleted successfully", data=f"Account with email {request.user.email} is deleted", status=status.HTTP_204_NO_CONTENT)
         return self.error_response(message="You do not have permission to delete this account", status=status.HTTP_403_FORBIDDEN)
+    
+    @action(detail=False, methods=['patch'], url_path="fcmtoken")
+    def fcmtoken(self, request, pk=None):
+        user = request.user
+        fcmToken = request.data.get("token")
+
+        if not fcmToken:
+            return self.error_response(
+                message="Token is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user.fcm_tokens is None:
+            user.fcm_tokens = []
+
+        if fcmToken not in user.fcm_tokens:
+            user.fcm_tokens.append(fcmToken)
+            user.save()
+
+        return self.success_response(
+            message="FCM Token added successfully",
+            data={},
+            status_code=status.HTTP_200_OK
+        )
