@@ -24,11 +24,14 @@ class StandardResponseMixin:
 
         tokens = [str(token) for token in tokens]   
         message = messaging.MulticastMessage(
-            notification=messaging.Notification(title=str(title)),
+            notification=messaging.Notification(
+            title=str(title),
+            body=str(body)),
             tokens=tokens,
         )
         try:
             response = messaging.send_multicast(message)
+        
             print(f"Notification Sent, Response is: {response}")
             return {
                 'status': 'success',
