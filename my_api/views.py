@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.conf import settings
-from .serializers import CommentSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer, VerifyEmailSerializer
+from .serializers import CommentSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer, VerifyEmailSerializer, SocialRegisterSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 from rest_framework import generics, status, viewsets
@@ -35,6 +35,39 @@ class RegisterView(generics.CreateAPIView, StandardResponseMixin):
         return self.success_response(
             message="Account Registered Successfully!!",
             data={"email": user.email},
+            status_code=status.HTTP_200_OK
+        )
+    
+class SocialRegisterView(generics.CreateAPIView, StandardResponseMixin):
+    queryset = MyApiUser.objects.all()
+    serializer_class = SocialRegisterSerializer
+
+    def create(self, request, *args, **kwargs):
+        email = request.data.get("email")
+        
+        existing_user = MyApiUser.objects.filter(email=email, is_social=True).first()
+        if existing_user:
+            refresh = RefreshToken.for_user(existing_user)
+            return self.success_response(
+                message="User already exists, returning existing user.",
+                data={
+                    'token': str(refresh.access_token),
+                    'user': SocialRegisterSerializer(existing_user).data
+                },
+                status_code=status.HTTP_200_OK
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save(email_verified=True)
+        
+        refresh = RefreshToken.for_user(user)
+        return self.success_response(
+            message="Account Registered Successfully!",
+            data={
+                'token': str(refresh.access_token),
+                'user': serializer.data
+            },
             status_code=status.HTTP_200_OK
         )
 
