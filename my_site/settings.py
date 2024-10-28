@@ -27,8 +27,6 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 AUTH_USER_MODEL = 'my_api.MyApiUser'
 
-ASGI_APPLICATION = 'mysite.asgi.application'
-
 APPEND_SLASH = True
 
 # Quick-start development settings - unsuitable for production
@@ -38,14 +36,14 @@ APPEND_SLASH = True
 SECRET_KEY = os.getenv('SECRET_KEY')
 
 
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [(os.getenv('REDIS_HOST', 'localhost'), 6379)],
-        },
-    },
-}
+# CHANNEL_LAYERS = {
+#     'default': {
+#         'BACKEND': 'channels_redis.core.RedisChannelLayer',
+#         'CONFIG': {
+#             "hosts": [(os.getenv('REDIS_HOST', 'localhost'), 6379)],
+#         },
+#     },
+# }
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -58,18 +56,19 @@ AUTHENTICATION_BACKENDS = (
 # Application definition
 
 INSTALLED_APPS = [
-    'unfold',
+    "daphne",
+    'my_api',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'channels',
     'rest_framework',
     'django_filters',
     'rest_framework_simplejwt',
-    'my_api',
+    'unfold',
 ]
 
 # Configure the default authentication classes
@@ -202,3 +201,5 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+ASGI_APPLICATION = 'my_site.asgi.application'

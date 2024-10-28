@@ -8,19 +8,19 @@ https://docs.djangoproject.com/en/5.0/howto/deployment/asgi/
 """
 
 import os
+import django
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
-from django.urls import re_path
-from consumer import CommentConsumer
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'my_site.settings')
+django.setup()
+
+from channels.auth import AuthMiddlewareStack
+from my_api.routing import websocket_urlpatterns
 
 application = ProtocolTypeRouter({
     "http": get_asgi_application(),
     "websocket": AuthMiddlewareStack(
-        URLRouter([
-                re_path(r'ws/comments/(?P<issue_id>\w+)/$', CommentConsumer.as_asgi()),
-        ])
+        URLRouter(websocket_urlpatterns)
     ),
 })
