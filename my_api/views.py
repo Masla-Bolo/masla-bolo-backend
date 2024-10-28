@@ -14,8 +14,10 @@ from rest_framework import filters, status
 from django_filters.rest_framework import DjangoFilterBackend
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
-from django.db.models import Q, Count, Prefetch
+from django.db.models import Q
 from .mixins import StandardResponseMixin
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -421,13 +423,15 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             serializer.save(issue=issue, user=request.user)
 
         channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            f'comments_{issue.id}',
-            {
-                'type': 'comment_message',
-                'comment': serializer.data
-            }
-        )
+        if channel_layer is not None:
+            async_to_sync(channel_layer.group_send)(
+                f'comments_{issue.id}',
+                {
+                    'type': 'comment_message',
+                    'comment': serializer.data,
+                    'user_id': request.user.id
+                }
+            )
 
         return self.success_response(
             message="Comment Created Successfully!!",
