@@ -21,6 +21,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from datetime import timedelta
 from django.db import connection
+from .utils import send_push_notification
 
 class RegisterView(generics.CreateAPIView, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
@@ -290,7 +291,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         issue = self.get_object()
         user = request.user
         like, created = Like.objects.get_or_create(user=user, issue=issue)
-        # self.send_push_notification(request.user.fcm_tokens, "Issue Like Called", "Body Of the Notification, Ps: You can only send a String")
+        send_push_notification(request.user.fcm_tokens, "Issue Like Called", "Body Of the Notification, Ps: You can only send a String")
         
         if created:
             issue.likes_count += 1
