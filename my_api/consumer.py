@@ -27,10 +27,10 @@ class CommentConsumer(AsyncWebsocketConsumer):
         pass
 
     async def comment_message(self, event):
-        # Get the user ID from the event
         user_id = event.get('user_id')
+        print(f"FIRST USER: {self.scope['user']}")
+        print(f"SECOND USER: {user_id}")
         
-        # Skip sending the comment back to the user who created it
         if user_id != self.scope['user'].id:
             await self.send(text_data=json.dumps({
                 'type': 'comment',

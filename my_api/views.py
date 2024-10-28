@@ -46,7 +46,17 @@ class SocialRegisterView(generics.CreateAPIView, StandardResponseMixin):
 
     def create(self, request, *args, **kwargs):
         email = request.data.get("email")
+        not_social_user = MyApiUser.objects.filter(
+            Q(email=email) & (Q(is_social=False) | Q(is_social=None))
+        ).first()
         
+        if not_social_user:
+            return self.error_response(
+                message="User with this email already exists!",
+                data={},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         existing_user = MyApiUser.objects.filter(email=email, is_social=True).first()
         if existing_user:
             refresh = RefreshToken.for_user(existing_user)
