@@ -27,6 +27,8 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 AUTH_USER_MODEL = 'my_api.MyApiUser'
 
+ASGI_APPLICATION = 'mysite.asgi.application'
+
 APPEND_SLASH = True
 
 # Quick-start development settings - unsuitable for production
@@ -34,6 +36,16 @@ APPEND_SLASH = True
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY')
+
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [(os.getenv('REDIS_HOST', 'localhost'), 6379)],
+        },
+    },
+}
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -53,6 +65,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'rest_framework',
     'django_filters',
     'rest_framework_simplejwt',

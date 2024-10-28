@@ -407,7 +407,11 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if parent_id:
             parent_comment = get_object_or_404(Comment, id=parent_id)
             if parent_comment.issue != issue:
-                return self.error_response(message="Parent comment must belong to the same issue", data="ParentIssueNotSame",status_code=status.HTTP_400_BAD_REQUEST)
+                return self.error_response(
+                    message="Parent comment must belong to the same issue",
+                    data="ParentIssueNotSame",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
             issue.comments_count += 1
             issue.save()
             serializer.save(issue=parent_comment.issue, parent=parent_comment, user=request.user)
@@ -416,7 +420,20 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             issue.save()
             serializer.save(issue=issue, user=request.user)
 
-        return self.success_response(message="Comment Created Successfully!!", data=serializer.data, status_code=status.HTTP_201_CREATED)
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'comments_{issue.id}',
+            {
+                'type': 'comment_message',
+                'comment': serializer.data
+            }
+        )
+
+        return self.success_response(
+            message="Comment Created Successfully!!",
+            data=serializer.data,
+            status_code=status.HTTP_201_CREATED
+        )
 
     def list(self, request, *args, **kwargs):
         

@@ -104,7 +104,9 @@ class Issue(models.Model):
     description = models.CharField(max_length=280)  # Limit to 150 characters
     categories = models.JSONField()
     images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
-    issue_status = models.CharField(max_length=15, choices=ISSUE_STATUS, default=NOT_APPROVED) # Track completion status
+    issue_status = models.CharField(max_length=15,  
+                                    # choices=ISSUE_STATUS, 
+                                    default=NOT_APPROVED) # Track completion status
     is_anonymous = models.BooleanField(default=False)
     likes_count = models.PositiveIntegerField(default=0)
     comments_count = models.PositiveIntegerField(default=0)
