@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.conf import settings
-from .serializers import CommentSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer, VerifyEmailSerializer
+from .serializers import CommentSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer, VerifyEmailSerializer, SocialRegisterSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 from rest_framework import generics, status, viewsets
@@ -14,8 +14,10 @@ from rest_framework import filters, status
 from django_filters.rest_framework import DjangoFilterBackend
 from .permissions import IsUser, IsOfficial, IsAdmin
 from django.contrib.auth.models import update_last_login
-from django.db.models import Q, Count, Prefetch
+from django.db.models import Q
 from .mixins import StandardResponseMixin
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -36,6 +38,49 @@ class RegisterView(generics.CreateAPIView, StandardResponseMixin):
         return self.success_response(
             message="Account Registered Successfully!!",
             data={"email": user.email},
+            status_code=status.HTTP_200_OK
+        )
+    
+class SocialRegisterView(generics.CreateAPIView, StandardResponseMixin):
+    queryset = MyApiUser.objects.all()
+    serializer_class = SocialRegisterSerializer
+
+    def create(self, request, *args, **kwargs):
+        email = request.data.get("email")
+        not_social_user = MyApiUser.objects.filter(
+            Q(email=email) & (Q(is_social=False) | Q(is_social=None))
+        ).first()
+        
+        if not_social_user:
+            return self.error_response(
+                message="User with this email already exists!",
+                data={},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        existing_user = MyApiUser.objects.filter(email=email, is_social=True).first()
+        if existing_user:
+            refresh = RefreshToken.for_user(existing_user)
+            return self.success_response(
+                message="User already exists, returning existing user.",
+                data={
+                    'token': str(refresh.access_token),
+                    'user': SocialRegisterSerializer(existing_user).data
+                },
+                status_code=status.HTTP_200_OK
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save(email_verified=True)
+        
+        refresh = RefreshToken.for_user(user)
+        return self.success_response(
+            message="Account Registered Successfully!",
+            data={
+                'token': str(refresh.access_token),
+                'user': serializer.data
+            },
             status_code=status.HTTP_200_OK
         )
 
@@ -375,7 +420,11 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if parent_id:
             parent_comment = get_object_or_404(Comment, id=parent_id)
             if parent_comment.issue != issue:
-                return self.error_response(message="Parent comment must belong to the same issue", data="ParentIssueNotSame",status_code=status.HTTP_400_BAD_REQUEST)
+                return self.error_response(
+                    message="Parent comment must belong to the same issue",
+                    data="ParentIssueNotSame",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
             issue.comments_count += 1
             issue.save()
             serializer.save(issue=parent_comment.issue, parent=parent_comment, user=request.user)
@@ -384,7 +433,22 @@ class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             issue.save()
             serializer.save(issue=issue, user=request.user)
 
-        return self.success_response(message="Comment Created Successfully!!", data=serializer.data, status_code=status.HTTP_201_CREATED)
+        channel_layer = get_channel_layer()
+        if channel_layer is not None:
+            async_to_sync(channel_layer.group_send)(
+                f'comments_{issue.id}',
+                {
+                    'type': 'comment_message',
+                    'comment': serializer.data,
+                    'user_id': request.user.id
+                }
+            )
+
+        return self.success_response(
+            message="Comment Created Successfully!!",
+            data=serializer.data,
+            status_code=status.HTTP_201_CREATED
+        )
 
     def list(self, request, *args, **kwargs):
         

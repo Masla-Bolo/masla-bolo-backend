@@ -3,6 +3,7 @@ from django.urls import include, path
 from .views import (
     RegisterView, 
     LoginView,
+    SocialRegisterView,
     VerifyEmailView,
     SendEmailView
 )
@@ -18,6 +19,7 @@ router.register(r"comments", views.CommentViewSet, basename="comments")
 urlpatterns = [
     path("", include(router.urls)),
     path('register/', RegisterView.as_view(), name='register'),
+    path('social-register/', SocialRegisterView.as_view(), name='social-register'),
     path('login/', LoginView.as_view(), name='login'),
     path('send-email-verification/', SendEmailView.as_view(), name='send-email'),
     path('verify-email/', VerifyEmailView.as_view(), name='verify-email'),
