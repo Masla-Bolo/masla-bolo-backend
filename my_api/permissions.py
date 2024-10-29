@@ -7,8 +7,6 @@ class IsUser(permissions.BasePermission):
     message = "Only Users Can Perform This Action"
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == 'user'
-
-
 class IsOfficial(permissions.BasePermission):
     """
     Permission for Officials (Role 2)
@@ -17,7 +15,6 @@ class IsOfficial(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == 'official'
 
-
 class IsAdmin(permissions.BasePermission):
     """
     Permission for Admins (Role 3)
@@ -25,3 +22,12 @@ class IsAdmin(permissions.BasePermission):
     message = "Only Admins Can Perform This Action"
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == 'admin'
+
+class IsVerified(permissions.BasePermission):
+    """
+    Permission for Verification
+    """
+    message = "Only Officals Can Perform This Action."
+    def has_permission(self, request, view):
+        return request.user.verified
+

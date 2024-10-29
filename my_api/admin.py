@@ -4,13 +4,13 @@ from unfold.admin import ModelAdmin
 from .models import MyApiUser, Issue, Comment, Like
 
 class MyApiUserAdmin(ModelAdmin):
-    list_display = ('username', 'email', 'is_active', "is_superuser", 'role', "email_verified")
+    list_display = ('username', 'email', 'is_active', "is_superuser", 'role', "verified")
     search_fields = ('username', 'email')
-    list_filter = ('is_active', 'is_superuser', 'last_login', "email_verified")
+    list_filter = ('is_active', 'is_superuser', 'last_login', "verified")
     readonly_fields = ('last_login', 'password', 'created_at')
     fieldsets = (
         (None, {'fields': ('username', 'email', 'password', 'role')}),
-        ('Permissions', {'fields': ('is_active', 'is_superuser', "email_verified")}),
+        ('Permissions', {'fields': ('is_active', 'is_superuser', "verified")}),
         ('Important dates', {'fields': ('created_at', 'last_login')}),
     )
     add_fieldsets = (

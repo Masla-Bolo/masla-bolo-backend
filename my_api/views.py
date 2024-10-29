@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.conf import settings
-from .serializers import CommentSerializer, LoginSerializer, MyApiUserSerializer, RegisterSerializer, IssueSerializer, VerifyEmailSerializer, SocialRegisterSerializer
+from .serializers import CommentSerializer, LoginSerializer, MyApiUserSerializer, OfficialSerializer, RegisterSerializer, IssueSerializer, VerifyEmailSerializer, SocialRegisterSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 from rest_framework import generics, status, viewsets
@@ -34,12 +34,22 @@ class RegisterView(generics.CreateAPIView, StandardResponseMixin):
         serializer.is_valid(raise_exception=True)
         user = serializer.save(email_verified=False)
 
-        headers = self.get_success_headers(serializer.data)
-        return self.success_response(
-            message="Account Registered Successfully!!",
-            data={"email": user.email},
-            status_code=status.HTTP_200_OK
-        )
+        if user.role == "user":
+            return self.success_response(
+                message="Account Registered Successfully!!",
+                data={"email": user.email},
+                status_code=status.HTTP_200_OK
+            )
+        elif user.role == "official":
+            refresh = RefreshToken.for_user(user)
+            return self.success_response(
+                message="Account Registered Successfully!!",
+                data={
+                    'token': str(refresh.access_token),
+                    "user": user
+                },
+                status_code=status.HTTP_200_OK
+            )
     
 class SocialRegisterView(generics.CreateAPIView, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
@@ -147,7 +157,7 @@ class LoginView(generics.GenericAPIView, StandardResponseMixin):
             refresh = RefreshToken.for_user(user)
             user_data = MyApiUserSerializer(user).data
 
-            if not user.email_verified:
+            if not user.email_verified and user.role == MyApiUser.USER:
                 return self.success_response(message="Email Not Verified!",data={
                     'user': user_data
                 }, status_code=status.HTTP_200_OK)
@@ -197,11 +207,11 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         action_permissions = {
             'list': [AllowAny],
             'retrieve': [IsAuthenticated],
-            'create': [IsAuthenticated, IsUser],
-            'update': [IsAuthenticated, IsUser],
-            'partial_update': [IsAuthenticated, IsUser],
-            'destroy': [IsAuthenticated, IsUser],
-            'complete': [IsAuthenticated, IsUser],
+            'create': [IsUser],
+            'update': [IsUser, IsAdmin],
+            'partial_update': [IsUser],
+            'destroy': [IsUser],
+            'complete': [IsUser],
             'approve': [IsAdmin],
         }
         
@@ -236,7 +246,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             status_code=status.HTTP_200_OK
         )
 
-    @action(detail=False, permission_classes=[IsAuthenticated, IsUser])
+    @action(detail=False, permission_classes=[IsUser])
     def my(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset().filter(user=request.user))
         page = self.paginate_queryset(queryset)
@@ -248,7 +258,42 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         
         serializer = self.get_serializer(queryset, many=True)
         return self.success_response(message="Fetched Your Issues Successfully!!", data=serializer.data)
+    
+    @action(detail=False, permission_classes=[IsOfficial]) 
+    def myOfficialIssues(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset().filter(user=request.user))
+        page = self.paginate_queryset(queryset)
+        
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            paginated_data = self.get_paginated_response(serializer.data).data
+            return self.success_response(message="Fetched Your Issues Successfully!!", data=paginated_data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return self.success_response(message="Fetched Your Issues Successfully!!", data=serializer.data)
 
+    @action(detail=True, methods=['patch'], permission_classes=[IsAdmin])
+    def approve(self, request, pk=None):
+        issue = self.get_object()
+        if issue.issue_status == Issue.APPROVED:
+            # we have found the official here
+            # offcialUser = getOfficialUser(lat, lng)
+            # somehow find official and assign issue to him
+            # issue.official = offcialUser
+            # officialUser.assignedIssues.append(issue)
+            return self.error_response(
+                message="Issue is already approved",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        issue.issue_status = Issue.APPROVED
+        issue.save()
+        serializer = self.get_serializer(issue)
+        return self.success_response(
+            message="Issue Approved",
+            data=serializer.data,
+            status_code=status.HTTP_200_OK
+        )
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -280,24 +325,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         return self.success_response(
             message="Issue marked as complete",
             data=issue,
-            status_code=status.HTTP_200_OK
-        )
-        
-    @action(detail=True, methods=['patch'])
-    def approve(self, request, pk=None):
-        issue = self.get_object()
-        if issue.issue_status == Issue.APPROVED:
-            return self.error_response(
-                message="Issue is already approved",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-        
-        issue.issue_status = Issue.APPROVED
-        issue.save()
-        serializer = self.get_serializer(issue)
-        return self.success_response(
-            message="Issue Approved",
-            data=serializer.data,
             status_code=status.HTTP_200_OK
         )
     
@@ -517,6 +544,7 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             'update': [IsAuthenticated],
             'partial_update': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
             'destroy': [IsAuthenticated],
+            'verifyOfficial': [IsAdmin]
         }
         permission_classes = action_permissions.get(self.action, [IsAuthenticated])
         return [permission() for permission in permission_classes]
@@ -545,6 +573,17 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         self.perform_update(serializer)
 
         return self.success_response(message="User Updated", data=serializer.data)
+    
+    def verifyOfficial(self, request, *args, **kwargs):
+        # official = request.params.get(id)
+        # official.verified = true
+        # official.save()
+        # return success(official)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return self.success_response(message="Offical Updated", data=serializer.data)
 
     def perform_update(self, serializer):
         serializer.save()
@@ -579,3 +618,30 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             data={},
             status_code=status.HTTP_200_OK
         )
+    
+class OfficialViewSet(viewsets.ModelViewSet, StandardResponseMixin):
+    queryset = MyApiUser.objects.all()
+    serializer_class = OfficialSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """
+        Instantiates and returns the list of permissions that this view requires.
+        """
+        action_permissions = {
+            'list': [IsAdmin],
+            'retrieve': [IsUser],
+            'create': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+            'update': [IsAuthenticated],
+            'partial_update': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+            'destroy': [IsAuthenticated],
+        }
+        permission_classes = action_permissions.get(self.action, [IsAuthenticated])
+        return [permission() for permission in permission_classes]
+    
+    def create(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return self.success_response(message="Offical Updated", data=serializer.data)

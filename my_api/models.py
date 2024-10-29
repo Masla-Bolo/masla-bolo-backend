@@ -14,6 +14,13 @@ class MyApiUserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
+    def create_official_user(self, email, username, password):
+        user = self.create_user(email, username, password=password, role=MyApiUser.OFFICIAL)  # Ensure role is 'official' for superuser
+        user.is_staff = True
+        user.is_superuser = True
+        user.save(using=self._db)
+        return user
+
     def create_superuser(self, email, username, password):
         user = self.create_user(email, username, password=password, role=MyApiUser.ADMIN)  # Ensure role is 'admin' for superuser
         user.is_staff = True
@@ -33,7 +40,7 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
     ]
 
     email = models.EmailField(unique=True)
-    email_verified = models.BooleanField(default=False)
+    verified = models.BooleanField(default=False)
     is_social = models.BooleanField(default=False)
     verification_code = models.CharField(max_length=6, null=True, blank=True)
     code_expiry = models.DateTimeField(null=True, blank=True)
@@ -53,6 +60,14 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+    
+class MyApiOfficial(models.Model):
+    assigned_issues=models.JSONField(default=list)
+    latitude = models.DecimalField(max_digits=12, decimal_places=10)
+    longitude = models.DecimalField(max_digits=12, decimal_places=10)
+    area_range = models.DecimalField(max_digits=12, decimal_places=10)    
+    country_code = models.CharField(max_length=3)
+    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
 
 # Issue Model
 class Issue(models.Model):
@@ -99,8 +114,8 @@ class Issue(models.Model):
 
     title = models.CharField(max_length=255)
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
-    latitude = models.DecimalField(max_digits=12, decimal_places=10)
-    longitude = models.DecimalField(max_digits=12, decimal_places=10)
+    latitude = models.DecimalField(max_digits=13, decimal_places=10)
+    longitude = models.DecimalField(max_digits=13, decimal_places=10)
     description = models.CharField(max_length=280)  # Limit to 150 characters
     categories = models.JSONField()
     images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
@@ -112,7 +127,7 @@ class Issue(models.Model):
     comments_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)  # Automatically set on creation
     updated_at = models.DateTimeField(auto_now=True)  # Automatically update when modified
-
+    
     class Meta:
         ordering = ['-created_at'] # order comments by recent by default
 
@@ -170,3 +185,17 @@ class Like(models.Model):
         if self.issue:
             return f'Like by {self.user.username} on issue: {self.issue.title}'
         return f'Like by {self.user.username} on comment: {self.comment.content[:20]}...'
+    
+
+# approve ki patch API -> admin issue ka status approve karega...woh bolega yeh issue legit hai...woh db mein dhoondega ke
+# iss issue ke lat long ke andar konsa official ata hai...
+# woh official jese hi mila...uski id woh nikalega...
+# ab issue mein official id ki jagah yeh official ki id ajygi..
+
+# profile page in app -> all issues (pending, not approved, solved) ( for user )
+# profile page in app -> all issues (assigned) ( for admin ) 
+# how to get assigned issues? => getIssues?officialId=currentOfficialIdInApp
+
+# approve ki api mein app sendNOtification to only the official, ab agar baad mein
+# usko apni list dekhni ho toh woh kia karega? wapis notification mein jayga.
+

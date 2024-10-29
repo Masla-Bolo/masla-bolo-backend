@@ -80,8 +80,7 @@ def send_push_notification(tokens, title, body):
 
         tokens = [str(token) for token in tokens]   
         message = messaging.MulticastMessage(
-            notification=messaging.Notification(title=str(title)),
-            body=str(body),
+            notification=messaging.Notification(title=str(title), body=str(body)),
             tokens=tokens,
         )
         try:

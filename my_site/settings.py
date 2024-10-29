@@ -56,6 +56,7 @@ AUTHENTICATION_BACKENDS = (
 # Application definition
 
 INSTALLED_APPS = [
+    'unfold',
     "daphne",
     'my_api',
     'channels',
@@ -68,7 +69,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_filters',
     'rest_framework_simplejwt',
-    'unfold',
 ]
 
 # Configure the default authentication classes

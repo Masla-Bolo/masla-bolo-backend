@@ -1,6 +1,6 @@
 # from datetime import timezone
 from rest_framework import serializers
-from .models import MyApiUser, Issue, Like, Comment
+from .models import MyApiUser, Issue, Like, Comment, MyApiOfficial
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from django.db.models import Exists, OuterRef, Count, Prefetch
@@ -23,22 +23,43 @@ class RegisterSerializer(serializers.ModelSerializer):
                 username=validated_data['username'],
                 password=validated_data['password'],
             )
-        else:
+        else:  # in case of official and user registration will be same!
             user = MyApiUser.objects.create_user(
                 email=validated_data['email'],
                 username=validated_data['username'],
                 password=validated_data['password'],
                 role=role,
-                email_verified=False,
-                verification_code=None,
-                code_expiry=None,
             )
         if 'profile_image' in validated_data:
             user.profile_image = validated_data['profile_image']
             user.save()
 
         return user
-    
+
+
+class OfficialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MyApiOfficial
+        fields = ["id", "email", "username", "role", "profile_image", "is_social"]
+
+    def create(self, validated_data):
+        role = validated_data.get('role', 'user')
+
+        user = MyApiOfficial.objects.create_user(
+            email=validated_data['email'],
+            username=validated_data['username'],
+            role=role,
+            email_verified=True,
+            verification_code=None,
+            code_expiry=None,
+            is_social=True,
+        )
+        if 'profile_image' in validated_data:
+            user.profile_image = validated_data['profile_image']
+            user.save()
+
+        return user
+
 
 class SocialRegisterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -139,7 +160,8 @@ class CommentSerializer(serializers.ModelSerializer):
         return {
             'id': obj.user.id,
             'username': obj.user.username,
-            'role': obj.user.profile_image
+            'role': obj.user.role,
+            'profile_image': obj.user.profile_image
         }
 
     def get_is_liked(self, obj):
@@ -170,17 +192,27 @@ class CommentSerializer(serializers.ModelSerializer):
 class IssueSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
-    
+
+    # modify lng and lat here to make it upto 10 decimal places
     class Meta:
         model = Issue
-        fields = ['id', 'title', 'user', 'latitude', 'longitude', 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments_count", "is_liked", 'created_at', 'updated_at']
+        fields = ['id', 'title', 'user', 
+                #   'latitude', 'longitude', 
+                  'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments_count", "is_liked", 'created_at', 'updated_at']
         read_only_fields = ['user', 'created_at', 'updated_at', 'comments_count']
 
-    def get_user(self, obj):
+    # def to_representation(self, obj: Issue):
+    #     representation = super().to_representation(obj)
+    #     representation['latitude'] = round(float(representation['latitude']), 12)
+    #     representation['longitude'] = round(float(representation['longitude']), 12)
+    #     return representation
+    
+    def get_user(self, obj: Issue) -> dict: 
         return {
             'id': obj.user.id,
             'username': obj.user.username,
-            "photo": obj.user.profile_image
+            "role": obj.user.role,
+            "profile_image": obj.user.profile_image
         }
 
     def get_is_liked(self, obj):
