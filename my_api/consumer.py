@@ -27,12 +27,7 @@ class CommentConsumer(AsyncWebsocketConsumer):
         pass
 
     async def comment_message(self, event):
-        user_id = event.get('user_id')
-        print(f"FIRST USER: {self.scope['user']}")
-        print(f"SECOND USER: {user_id}")
-        
-        if user_id != self.scope['user'].id:
-            await self.send(text_data=json.dumps({
-                'type': 'comment',
-                'comment': event['comment']
-            }))
+        await self.send(text_data=json.dumps({
+            'type': 'comment',
+            'comment': event['comment']
+        }))
