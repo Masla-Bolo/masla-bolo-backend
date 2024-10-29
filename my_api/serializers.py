@@ -115,7 +115,7 @@ class CommentSerializer(serializers.ModelSerializer):
         return {
             'id': obj.user.id,
             'username': obj.user.username,
-            'role': obj.user.role
+            'role': obj.user.profile_image
         }
 
     def get_is_liked(self, obj):
@@ -155,7 +155,8 @@ class IssueSerializer(serializers.ModelSerializer):
     def get_user(self, obj):
         return {
             'id': obj.user.id,
-            'username': obj.user.username
+            'username': obj.user.username,
+            "photo": obj.user.profile_image
         }
 
     def get_is_liked(self, obj):
