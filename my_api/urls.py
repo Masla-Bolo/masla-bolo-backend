@@ -15,6 +15,7 @@ router = routers.DefaultRouter()
 router.register(r"issues", views.IssueViewSet, basename="issues")
 router.register(r"users", views.UserViewSet, basename="users")
 router.register(r"comments", views.CommentViewSet, basename="comments")
+router.register(r"officials", views.OfficialViewSet, basename="officials")
 
 urlpatterns = [
     path("", include(router.urls)),

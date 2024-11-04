@@ -48,6 +48,9 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+GDAL_LIBRARY_PATH = os.getenv("gdal_path")
+GEOS_LIBRARY_PATH= os.getenv("geos_path")
+
 ALLOWED_HOSTS = ["*"]
 
 AUTHENTICATION_BACKENDS = (
@@ -69,6 +72,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_filters',
     'rest_framework_simplejwt',
+    'django.contrib.gis',
 ]
 
 # Configure the default authentication classes

@@ -4,30 +4,37 @@ from .models import MyApiUser, Issue, Like, Comment, MyApiOfficial
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from django.db.models import Exists, OuterRef, Count, Prefetch
+from django.contrib.gis.geos import Point
+
 # from django.db.models.functions import Coalesce
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
+    latitude = serializers.DecimalField(write_only=True, required=True)
+    longitude = serializers.DecimalField(write_only=True, required=True)
     profile_image = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = MyApiUser
-        fields = ["id", "email", "username", "password", "role", "profile_image"]
+        fields = ["id", "email", "username", "password", "role", "profile_image", "latitude", "longitude"]
 
-    def create(self, validated_data):
+    def create(self, validated_data: dict):
         role = validated_data.get('role', 'user')  # Default to 'user' if role is not provided
+        location = Point(validated_data["longitude"], validated_data["latitude"])
 
         if role == "admin":
             user = MyApiUser.objects.create_superuser(
                 email=validated_data['email'],
                 username=validated_data['username'],
                 password=validated_data['password'],
+                location=location
             )
         else:  # in case of official and user registration will be same!
             user = MyApiUser.objects.create_user(
                 email=validated_data['email'],
                 username=validated_data['username'],
                 password=validated_data['password'],
+                location=location,
                 role=role,
             )
         if 'profile_image' in validated_data:
@@ -42,14 +49,14 @@ class OfficialSerializer(serializers.ModelSerializer):
         model = MyApiOfficial
         fields = ["id", "email", "username", "role", "profile_image", "is_social"]
 
-    def create(self, validated_data):
+    def create(self, validated_data: dict):
         role = validated_data.get('role', 'user')
 
         user = MyApiOfficial.objects.create_user(
             email=validated_data['email'],
             username=validated_data['username'],
             role=role,
-            email_verified=True,
+            verified=True,
             verification_code=None,
             code_expiry=None,
             is_social=True,
@@ -73,7 +80,7 @@ class SocialRegisterSerializer(serializers.ModelSerializer):
             email=validated_data['email'],
             username=validated_data['username'],
             role=role,
-            email_verified=True,
+            verified=True,
             verification_code=None,
             code_expiry=None,
             is_social=True,
@@ -88,7 +95,7 @@ class VerifyEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.CharField()
 
-    def validate(self, data):
+    def validate(self, data: dict):
         email = data.get('email')
         code = data.get('code')
 
@@ -119,7 +126,7 @@ class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField()
 
-    def validate(self, data):
+    def validate(self, data: dict):
         email = data.get("email")
         password = data.get("password")
         user = authenticate(email=email, password=password)
@@ -133,7 +140,7 @@ class LoginSerializer(serializers.Serializer):
 class MyApiUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = MyApiUser
-        fields = ['id', 'email', 'username', "role", 'is_active', 'profile_image','created_at', 'updated_at', "email_verified"]  # Include the new fields
+        fields = ['id', 'email', 'username', "role", 'is_active', 'profile_image','created_at', 'updated_at', "verified"]  # Include the new fields
 
 class LikeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -156,7 +163,7 @@ class CommentSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'issue', 'parent', 'content', 'created_at', 'updated_at', 'likes_count', 'is_edited', 'replies', 'is_liked', 'reply_to']
         read_only_fields = ['user', 'issue', 'created_at', 'updated_at', 'likes_count', 'is_edited', 'is_liked']
 
-    def get_user(self, obj):
+    def get_user(self, obj: Comment) -> dict:
         return {
             'id': obj.user.id,
             'username': obj.user.username,
@@ -164,10 +171,10 @@ class CommentSerializer(serializers.ModelSerializer):
             'profile_image': obj.user.profile_image
         }
 
-    def get_is_liked(self, obj):
+    def get_is_liked(self, obj: Comment):
         return getattr(obj, 'is_liked', False)
 
-    def create(self, validated_data):
+    def create(self, validated_data: dict):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
@@ -192,20 +199,18 @@ class CommentSerializer(serializers.ModelSerializer):
 class IssueSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
-
-    # modify lng and lat here to make it upto 10 decimal places
     class Meta:
         model = Issue
         fields = ['id', 'title', 'user', 
-                #   'latitude', 'longitude', 
+                  'latitude', 'longitude', 
                   'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments_count", "is_liked", 'created_at', 'updated_at']
         read_only_fields = ['user', 'created_at', 'updated_at', 'comments_count']
 
-    # def to_representation(self, obj: Issue):
-    #     representation = super().to_representation(obj)
-    #     representation['latitude'] = round(float(representation['latitude']), 12)
-    #     representation['longitude'] = round(float(representation['longitude']), 12)
-    #     return representation
+    def to_representation(self, obj: Issue):
+        representation = super().to_representation(obj)
+        representation['latitude'] = round(float(representation['latitude']), 12)
+        representation['longitude'] = round(float(representation['longitude']), 12)
+        return representation
     
     def get_user(self, obj: Issue) -> dict: 
         return {

@@ -1,7 +1,8 @@
 from django.contrib import admin
 from unfold.sites import UnfoldAdminSite
 from unfold.admin import ModelAdmin
-from .models import MyApiUser, Issue, Comment, Like
+from .models import MyApiUser, Issue, Comment, Like, MyApiOfficial
+from django.contrib.auth import get_user_model
 
 class MyApiUserAdmin(ModelAdmin):
     list_display = ('username', 'email', 'is_active', "is_superuser", 'role', "verified")
@@ -20,19 +21,15 @@ class MyApiUserAdmin(ModelAdmin):
         }),
     )
     def save_model(self, request, obj, form, change):
-        if not change:  
+        if not change:
             obj.set_password(form.cleaned_data["password"])
         super().save_model(request, obj, form, change)
 
 class IssueAdmin(ModelAdmin):
     list_display = ('title', 'issue_status', 'created_at', 'user')
-    
     list_filter = ('issue_status', 'created_at')
-    
     search_fields = ('title', 'description')
-    
     readonly_fields = ('created_at', 'updated_at')
-
     fieldsets = (
         (None, {'fields': ('title', 'description', 'user', 'categories', 'images')}),
         ('Status', {'fields': ('issue_status',)}),
@@ -52,6 +49,14 @@ class LikeAdmin(ModelAdmin):
     list_filter = ('created_at',)
     readonly_fields = ('created_at',)
 
+class MyApiOfficialAdmin(ModelAdmin):
+    list_display = ('user', 'area_range', 'country_code')
+    search_fields = ('user__username', 'country_code')
+    list_filter = ('country_code',)
+    fieldsets = (
+        (None, {'fields': ('user', 'assigned_issues', 'area_range', 'country_code')}),
+    )
+
 class CustomAdminSite(UnfoldAdminSite):
     site_header = "Masla Bolo Admin"
     site_title = "Masla Bolo Admin"
@@ -68,3 +73,4 @@ custom_admin_site.register(MyApiUser, MyApiUserAdmin)
 custom_admin_site.register(Issue, IssueAdmin)
 custom_admin_site.register(Comment, CommentAdmin)
 custom_admin_site.register(Like, LikeAdmin)
+custom_admin_site.register(MyApiOfficial, MyApiOfficialAdmin)

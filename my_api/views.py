@@ -4,7 +4,15 @@ from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.conf import settings
-from .serializers import CommentSerializer, LoginSerializer, MyApiUserSerializer, OfficialSerializer, RegisterSerializer, IssueSerializer, VerifyEmailSerializer, SocialRegisterSerializer
+from .serializers import (
+    CommentSerializer,
+    LoginSerializer, 
+    MyApiUserSerializer, 
+    OfficialSerializer, 
+    RegisterSerializer, 
+    IssueSerializer, 
+    VerifyEmailSerializer, 
+    SocialRegisterSerializer)
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 from rest_framework import generics, status, viewsets
@@ -23,7 +31,11 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from datetime import timedelta
 from django.db import connection
-from .utils import send_push_notification
+from .utils import send_push_notification, find_official_for_point
+from django.contrib.gis.db.models.functions import Distance
+from django.contrib.gis.measure import D 
+from django.contrib.gis.geos import Point
+
 
 class RegisterView(generics.CreateAPIView, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
@@ -40,7 +52,7 @@ class RegisterView(generics.CreateAPIView, StandardResponseMixin):
                 data={"email": user.email},
                 status_code=status.HTTP_200_OK
             )
-        elif user.role == "official":
+        else:
             refresh = RefreshToken.for_user(user)
             return self.success_response(
                 message="Account Registered Successfully!!",
@@ -57,25 +69,23 @@ class SocialRegisterView(generics.CreateAPIView, StandardResponseMixin):
 
     def create(self, request, *args, **kwargs):
         email = request.data.get("email")
-        not_social_user = MyApiUser.objects.filter(
-            Q(email=email) & (Q(is_social=False) | Q(is_social=None))
-        ).first()
-        
-        if not_social_user:
+        user = MyApiUser.objects.filter(email=email)
+
+        if user or not user.is_social:
             return self.error_response(
                 message="User with this email already exists!",
                 data={},
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        existing_user = MyApiUser.objects.filter(email=email, is_social=True).first()
-        if existing_user:
-            refresh = RefreshToken.for_user(existing_user)
+        # existing_user = MyApiUser.objects.filter(email=email, is_social=True).first()
+        if user.is_social:
+            refresh = RefreshToken.for_user(user)
             return self.success_response(
                 message="User already exists, returning existing user.",
                 data={
                     'token': str(refresh.access_token),
-                    'user': SocialRegisterSerializer(existing_user).data
+                    'user': SocialRegisterSerializer(user).data
                 },
                 status_code=status.HTTP_200_OK
             )
@@ -99,8 +109,11 @@ class SendEmailView(APIView, StandardResponseMixin):
         email = self.request.query_params.get('email')
         user = MyApiUser.objects.get(email=email)
 
-        if user.email_verified:
-            self.error_response(message="Email is Already Verified. Try Logging in.", data="AccountExists", status_code=status.HTTP_100_CONTINUE)
+        if user.verified:
+            self.error_response(
+                message="Email is Already Verified. Try Logging in.", 
+                data="AccountExists", 
+                status_code=status.HTTP_100_CONTINUE)
         
         # Generate a 6-digit verification code
         verification_code = str(random.randint(100000, 999999))
@@ -157,7 +170,7 @@ class LoginView(generics.GenericAPIView, StandardResponseMixin):
             refresh = RefreshToken.for_user(user)
             user_data = MyApiUserSerializer(user).data
 
-            if not user.email_verified and user.role == MyApiUser.USER:
+            if not user.verified and user.role == MyApiUser.USER:
                 return self.success_response(message="Email Not Verified!",data={
                     'user': user_data
                 }, status_code=status.HTTP_200_OK)
@@ -210,8 +223,8 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             'create': [IsUser],
             'update': [IsUser, IsAdmin],
             'partial_update': [IsUser],
-            'destroy': [IsUser],
-            'complete': [IsUser],
+            'destroy': [IsAdmin, IsUser],
+            'complete': [IsAdmin, IsUser],
             'approve': [IsAdmin],
         }
         
@@ -275,25 +288,26 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     @action(detail=True, methods=['patch'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
         issue = self.get_object()
-        if issue.issue_status == Issue.APPROVED:
+        try:
+            issue.change_status(Issue.APPROVED)
             # we have found the official here
-            # offcialUser = getOfficialUser(lat, lng)
+            officialUser = find_official_for_point(issue.location)
+            send_push_notification(tokens=officialUser.user.fcm_tokens,title=f"A New Issue Has Been Assigned to You from {issue.location}")
             # somehow find official and assign issue to him
             # issue.official = offcialUser
             # officialUser.assignedIssues.append(issue)
+            serializer = self.get_serializer(issue).data
+            # serializer["official_data"] = officialUser
+            return self.success_response(
+                message="Issue Approved",
+                data=serializer,
+                status_code=status.HTTP_200_OK
+            )
+        except ValidationError as e:
             return self.error_response(
-                message="Issue is already approved",
+                message=str(e),
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-        
-        issue.issue_status = Issue.APPROVED
-        issue.save()
-        serializer = self.get_serializer(issue)
-        return self.success_response(
-            message="Issue Approved",
-            data=serializer.data,
-            status_code=status.HTTP_200_OK
-        )
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -332,24 +346,41 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        # Get latitude and longitude from validated data
         latitude = serializer.validated_data['latitude']
         longitude = serializer.validated_data['longitude']
-        range_delta = 0.001
+        
+        # Create a Point object for the issue location
+        issue_location = Point(longitude, latitude, srid=4326)
 
+        # Define the distance threshold (e.g., 100 meters)
+        distance_threshold = D(m=100)
+
+        # Check for an existing issue within the distance threshold and matching category
         existing_issue = Issue.objects.filter(
-            Q(latitude__range=(float(latitude) - range_delta, float(latitude) + range_delta)) &
-            Q(longitude__range=(float(longitude) - range_delta, float(longitude) + range_delta)) &
-            Q(categories=serializer.validated_data['categories'])
-        ).first()
+            location__distance_lte=(issue_location, distance_threshold),
+            categories=serializer.validated_data['categories']
+        ).annotate(distance=Distance('location', issue_location)).first()
 
         if existing_issue:
-            return self.error_response(message="Same Issue Exists from within your Area", data={
-                'id': existing_issue.id,
-                'detail': 'This Issue Already Exists'
-            }, status_code=status.HTTP_400_BAD_REQUEST)
+            return self.error_response(
+                message="Same Issue Exists within your Area",
+                # data={
+                #     'id': existing_issue.id,
+                #     'detail': 'This Issue Already Exists',
+                #     'distance': existing_issue.distance.m  # Optional: include distance to the existing issue
+                # },
+                data=existing_issue,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
-        serializer.save(user=self.request.user)
-        return self.success_response(message="New Issue Created", data=serializer.data, status_code=status.HTTP_201_CREATED)
+        # Save the new issue with the user's location as a Point
+        serializer.save(user=self.request.user, location=issue_location)
+        return self.success_response(
+            message="New Issue Created",
+            data=serializer.data,
+            status_code=status.HTTP_201_CREATED
+        )
     
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -625,23 +656,36 @@ class OfficialViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        """
-        Instantiates and returns the list of permissions that this view requires.
-        """
         action_permissions = {
             'list': [IsAdmin],
             'retrieve': [IsUser],
-            'create': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+            'create': [IsAuthenticated, IsAdmin],
             'update': [IsAuthenticated],
-            'partial_update': [IsAuthenticated, IsUser, IsAdmin, IsOfficial],
+            'partial_update': [IsAuthenticated],
             'destroy': [IsAuthenticated],
         }
         permission_classes = action_permissions.get(self.action, [IsAuthenticated])
         return [permission() for permission in permission_classes]
-    
+
     def create(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return self.success_response(message="Offical Updated", data=serializer.data)
+        email = request.data.get("email")
+        username = request.data.get("username")
+        
+        if not email or not username:
+            self.error_response(
+                message="Email and username are required to update user role to official.", 
+                status_code=status.HTTP_403_FORBIDDEN)
+
+        try:
+            user = MyApiUser.objects.get(email=email)
+        except MyApiUser.DoesNotExist:
+            return self.error_response(message="User not found.", status=status.HTTP_404_NOT_FOUND)
+
+        # Update user fields to make them an official
+        user.role = "official"
+        user.username = username  # Ensure username matches request data
+        user.is_social = False  # Ensures this account is not marked as a social login
+        user.save()
+
+        serializer = self.get_serializer(user)
+        return self.success_response(message="User updated to official successfully", data=serializer.data)

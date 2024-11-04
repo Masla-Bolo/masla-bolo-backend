@@ -1,28 +1,56 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.contrib.gis.db import models as gis_models
+from django.contrib.gis.geos import Polygon
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from jsonschema import ValidationError
+from .utils import get_district_boundary
 
 class MyApiUserManager(BaseUserManager):
-    def create_user(self, email, username, role="user", password=None, email_verified=False, verification_code=None, code_expiry=None, is_social=False):
+    def create_user(self, 
+            email, 
+            username, 
+            location,
+            role="user", 
+            password=None, 
+            verified=False, 
+            verification_code=None, 
+            code_expiry=None, 
+            is_social=False):
         if not email:
             raise ValueError('Users must have an email address')
-        user = self.model(email=self.normalize_email(email), username=username, role=role, email_verified=email_verified, verification_code=verification_code, code_expiry=code_expiry, is_social=is_social)  # Use the passed role
+        user = self.model(
+            email=self.normalize_email(email), 
+            username=username, 
+            role=role, 
+            verified=verified,
+            verification_code=verification_code, 
+            code_expiry=code_expiry, 
+            is_social=is_social,
+            location=location)  # Use the passed role
         user.set_password(password)  # This hashes the password
         user.save(using=self._db)
         return user
 
-    def create_official_user(self, email, username, password):
-        user = self.create_user(email, username, password=password, role=MyApiUser.OFFICIAL)  # Ensure role is 'official' for superuser
-        user.is_staff = True
-        user.is_superuser = True
+    def create_official_user(self, email, username, password, location):
+        user = self.create_user(
+            email, 
+            username, 
+            location, 
+            password=password, 
+            role=MyApiUser.OFFICIAL)  # Ensure role is 'official' for superuser
         user.save(using=self._db)
         return user
 
     def create_superuser(self, email, username, password):
-        user = self.create_user(email, username, password=password, role=MyApiUser.ADMIN)  # Ensure role is 'admin' for superuser
+        user = self.create_user(
+            email, 
+            username, 
+            location=None, 
+            password=password, 
+            role=MyApiUser.ADMIN)  # Ensure role is 'admin' for superuser
         user.is_staff = True
         user.is_superuser = True
         user.save(using=self._db)
@@ -39,7 +67,7 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
         (ADMIN, 'Admin'),
     ]
 
-    email = models.EmailField(unique=True)
+    email = models.EmailField(unique=True, db_index=True)
     verified = models.BooleanField(default=False)
     is_social = models.BooleanField(default=False)
     verification_code = models.CharField(max_length=6, null=True, blank=True)
@@ -50,6 +78,7 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=USER)  # Role field
+    location = gis_models.PointField(null=True, blank=True) # To Show the Issue within city of user's proximity
     created_at = models.DateTimeField(default=timezone.now)  # Automatically set on creation
     updated_at = models.DateTimeField(auto_now=True)  # Automatically update when modified
 
@@ -62,18 +91,34 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
         return self.email
     
 class MyApiOfficial(models.Model):
-    assigned_issues=models.JSONField(default=list)
-    latitude = models.DecimalField(max_digits=12, decimal_places=10)
-    longitude = models.DecimalField(max_digits=12, decimal_places=10)
-    area_range = models.DecimalField(max_digits=12, decimal_places=10)    
-    country_code = models.CharField(max_length=3)
-    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='official_profiles')
+    assigned_issues = models.ManyToManyField('Issue', blank=True, related_name='officials')
+    area_range = gis_models.PolygonField(default='POLYGON((0 0, 0 0, 0 0, 0 0, 0 0))')  # PolygonField for area boundary
+    city_name = models.CharField(max_length=150, null=True, blank=True)
+    country_name = models.CharField(max_length=150, null=True, blank=True)
+    district_name = models.CharField(max_length=150, null=True, blank=True)
+    country_code = models.CharField(max_length=3, editable=False)
+
+    def save(self, *args, **kwargs):
+        # Automatically set the country code
+        if self.country_name:
+            self.country_code = self.country_name[:3].upper()
+
+        # Fetch and set area_range using district, city, and country information
+        if self.city_name and self.country_name:
+            coordinates = get_district_boundary(self.district_name, self.city_name, self.country_name)
+            if coordinates:
+                self.area_range = Polygon(coordinates)
+
+        super().save(*args, **kwargs)
 
 # Issue Model
 class Issue(models.Model):
     SOLVED = "solved"
     APPROVED = "approved"
     NOT_APPROVED = "not_approved"
+    SOLVING = "solving"
+    OFFICIAL_SOLVED = "official_solved"
 
     CATEGORY_CHOICES = [
         ('electric', 'Electric'),
@@ -106,33 +151,51 @@ class Issue(models.Model):
         ('other', 'Other'),
     ]
     
+    
+
     ISSUE_STATUS = [
         (SOLVED, 'Solved'),
         (APPROVED, 'Approved'),
-        (NOT_APPROVED, 'Not_Approved'),
+        (NOT_APPROVED, 'Not Approved'),
+        (SOLVING, 'Solving'),
+        (OFFICIAL_SOLVED, 'Official Solved'),
     ]
+
+    allowed_changes = {
+        'not_approved': ['approved'],
+        'approved': ['solving', 'official_solved'],
+        'solving': ['solved', 'official_solved'],
+        'official_solved': ['solved'],
+    }
 
     title = models.CharField(max_length=255)
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
-    latitude = models.DecimalField(max_digits=13, decimal_places=10)
-    longitude = models.DecimalField(max_digits=13, decimal_places=10)
-    description = models.CharField(max_length=280)  # Limit to 150 characters
+    location = gis_models.PointField(null=True, blank=True)  # PointField for latitude and longitude
+    description = models.CharField(max_length=280)
     categories = models.JSONField()
-    images = models.JSONField()  # Store images as a list of strings (image URLs or paths)
-    issue_status = models.CharField(max_length=15,  
-                                    # choices=ISSUE_STATUS, 
-                                    default=NOT_APPROVED) # Track completion status
+    images = models.JSONField()
+    issue_status = models.CharField(
+        max_length=15,
+        choices=ISSUE_STATUS,
+        default=NOT_APPROVED
+    )
     is_anonymous = models.BooleanField(default=False)
     likes_count = models.PositiveIntegerField(default=0)
     comments_count = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(default=timezone.now)  # Automatically set on creation
-    updated_at = models.DateTimeField(auto_now=True)  # Automatically update when modified
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        ordering = ['-created_at'] # order comments by recent by default
+        ordering = ['-created_at']
 
     def __str__(self):
         return self.title
+    
+    def change_status(self, new_status):
+        if new_status not in self.allowed_changes.get(self.issue_status, []):
+            raise ValidationError(f"Cannot transition from {self.issue_status} to {new_status}.")
+        self.issue_status = new_status
+        self.save()
     
     def clean(self):
         if not self.categories or not isinstance(self.categories, list) or len(self.categories) < 1:
