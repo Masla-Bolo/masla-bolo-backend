@@ -101,54 +101,93 @@ def send_push_notification(tokens, title, body):
         
 
 def find_official_for_point(point):
-    from .models import MyApiUser
-
-    # point = Point(longitude, latitude)
-
+    from .models import MyApiOfficial
+    
     try:
-        official = MyApiUser.objects.filter(role='official', area_range__contains=point).first()
+        official = MyApiOfficial.objects.filter(area_range__contains=point).first()
         return official if official else None
-    except MyApiUser.DoesNotExist:
+    except MyApiOfficial.DoesNotExist:
         return None
     
 def get_district_boundary(district_name, city, country):
+    """
+    Fetch and plot the boundary of a specific district within a city.
+    
+    Parameters:
+    district_name (str): Name of the district
+    city (str): Name of the city
+    country (str): Name of the country
+    
+    Returns:
+    list: List of coordinate pairs forming the boundary
+    """
+    # Construct the search query with more specific parameters
     search_query = f"{district_name}, {city}, {country}"
+    
+    # Nominatim API endpoint
     nominatim_url = "https://nominatim.openstreetmap.org/search"
-
+    
+    # Parameters for the API request
+    # Adding specific parameters to target district-level boundaries
     params = {
         'q': search_query,
         'format': 'json',
         'polygon_geojson': 1,
-        'limit': 10,
+        'limit': 10,  # Increased limit to get more results
+        'featuretype': 'district',  # Specifically look for districts
         'addressdetails': 1
     }
-
+    
     headers = {
         'User-Agent': 'district_boundary_fetcher/1.0'
     }
-
+    
     try:
         response = requests.get(nominatim_url, params=params, headers=headers)
         response.raise_for_status()
-
+        
         data = response.json()
+        
         if not data:
-            raise ValidationError(f"No boundary data found for the district: {district_name} in {city}, {country}.")
-
-        # Attempt to find the best match
+            raise ValueError(f"No results found for {search_query}")
+        
+        # Filter results to find the most relevant district match
+        district_result = None
         for result in data:
             address = result.get('address', {})
+            # Check if this result is specifically for the district we're looking for
             if (address.get('suburb', '').lower() == district_name.lower() or 
-                address.get('city', '').lower() == city.lower() or
-                address.get('country', '').lower() == country.lower()):
-                geojson = result.get('geojson')
-                if geojson:
-                    if geojson['type'] == 'Polygon':
-                        return geojson['coordinates'][0]
-                    elif geojson['type'] == 'MultiPolygon':
-                        return max(geojson['coordinates'], key=lambda x: len(x[0]))[0]
-
-        raise ValidationError(f"Boundary data could not be matched for district: {district_name} in {city}, {country}.")
-
+                address.get('district', '').lower() == district_name.lower() or
+                address.get('neighbourhood', '').lower() == district_name.lower()):
+                district_result = result
+                break
+        
+        if not district_result:
+            district_result = data[0]  # Take the first result if no specific match found
+            
+        # Extract the geometry
+        geojson = district_result.get('geojson')
+        
+        if not geojson:
+            raise ValueError(f"No boundary data found for {district_name}")
+            
+        # Extract coordinates based on geometry type
+        if geojson['type'] == 'Polygon':
+            coordinates = geojson['coordinates'][0]
+        elif geojson['type'] == 'MultiPolygon':
+            coordinates = max(geojson['coordinates'], key=lambda x: len(x[0]))[0]
+        else:
+            raise ValueError(f"Unsupported geometry type: {geojson['type']}")
+        
+        # Plot both visualizations
+        # plot_boundary(coordinates, district_name)
+        # create_interactive_map(coordinates, district_name, city)
+        
+        return coordinates
+        
     except requests.exceptions.RequestException as e:
-        raise ValidationError(f"Error fetching boundary data: {e}")
+        print(f"Error making request: {e}")
+        return None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None

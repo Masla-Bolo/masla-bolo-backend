@@ -6,12 +6,10 @@ from django.utils import timezone
 from django.db.models import Exists, OuterRef, Count, Prefetch
 from django.contrib.gis.geos import Point
 
-# from django.db.models.functions import Coalesce
-
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
-    latitude = serializers.DecimalField(write_only=True, required=True)
-    longitude = serializers.DecimalField(write_only=True, required=True)
+    latitude = serializers.DecimalField(write_only=True, required=True, max_digits=13, decimal_places=10)
+    longitude = serializers.DecimalField(write_only=True, required=True, max_digits=13, decimal_places=10)
     profile_image = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
@@ -19,8 +17,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ["id", "email", "username", "password", "role", "profile_image", "latitude", "longitude"]
 
     def create(self, validated_data: dict):
-        role = validated_data.get('role', 'user')  # Default to 'user' if role is not provided
-        location = Point(validated_data["longitude"], validated_data["latitude"])
+        role = validated_data.get('role', 'user')
+        longitude = float(validated_data["longitude"])
+        latitude = float(validated_data["latitude"])
+        location = Point(longitude, latitude)
 
         if role == "admin":
             user = MyApiUser.objects.create_superuser(
@@ -45,28 +45,14 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class OfficialSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = MyApiOfficial
-        fields = ["id", "email", "username", "role", "profile_image", "is_social"]
-
-    def create(self, validated_data: dict):
-        role = validated_data.get('role', 'user')
-
-        user = MyApiOfficial.objects.create_user(
-            email=validated_data['email'],
-            username=validated_data['username'],
-            role=role,
-            verified=True,
-            verification_code=None,
-            code_expiry=None,
-            is_social=True,
-        )
-        if 'profile_image' in validated_data:
-            user.profile_image = validated_data['profile_image']
-            user.save()
-
-        return user
-
+        fields = [
+            'id', 'user', 'assigned_issues', 'area_range', 
+            'city_name', 'country_name', 'district_name', 'country_code'
+        ]
+        read_only_fields = ['area_range', 'country_code']
 
 class SocialRegisterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -116,7 +102,7 @@ class VerifyEmailSerializer(serializers.Serializer):
     def save(self):
         email = self.validated_data['email']
         user = MyApiUser.objects.get(email=email)
-        user.email_verified = True
+        user.verified = True
         user.verification_code = None
         user.code_expiry = None
         user.save()

@@ -18,7 +18,8 @@ class MyApiUserManager(BaseUserManager):
             verified=False, 
             verification_code=None, 
             code_expiry=None, 
-            is_social=False):
+            is_social=False
+            ):
         if not email:
             raise ValueError('Users must have an email address')
         user = self.model(
@@ -29,7 +30,8 @@ class MyApiUserManager(BaseUserManager):
             verification_code=verification_code, 
             code_expiry=code_expiry, 
             is_social=is_social,
-            location=location)  # Use the passed role
+            location=location
+            )  # Use the passed role
         user.set_password(password)  # This hashes the password
         user.save(using=self._db)
         return user
@@ -91,9 +93,9 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
         return self.email
     
 class MyApiOfficial(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='official_profiles')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='user')
     assigned_issues = models.ManyToManyField('Issue', blank=True, related_name='officials')
-    area_range = gis_models.PolygonField(default='POLYGON((0 0, 0 0, 0 0, 0 0, 0 0))')  # PolygonField for area boundary
+    area_range = gis_models.PolygonField(default='POLYGON((0 0, 0 0, 0 0, 0 0, 0 0))')  
     city_name = models.CharField(max_length=150, null=True, blank=True)
     country_name = models.CharField(max_length=150, null=True, blank=True)
     district_name = models.CharField(max_length=150, null=True, blank=True)

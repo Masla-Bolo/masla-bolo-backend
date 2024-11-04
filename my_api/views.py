@@ -17,7 +17,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 from rest_framework import generics, status, viewsets
 from rest_framework.views import APIView
-from .models import MyApiUser, Issue, Like, Comment
+from .models import MyApiUser, Issue, Like, Comment, MyApiOfficial
 from rest_framework import filters, status
 from django_filters.rest_framework import DjangoFilterBackend
 from .permissions import IsUser, IsOfficial, IsAdmin
@@ -44,7 +44,7 @@ class RegisterView(generics.CreateAPIView, StandardResponseMixin):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save(email_verified=False)
+        user = serializer.save(verified=False)
 
         if user.role == "user":
             return self.success_response(
@@ -92,7 +92,7 @@ class SocialRegisterView(generics.CreateAPIView, StandardResponseMixin):
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save(email_verified=True)
+        user = serializer.save(verified=True)
         
         refresh = RefreshToken.for_user(user)
         return self.success_response(
@@ -290,14 +290,17 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         issue = self.get_object()
         try:
             issue.change_status(Issue.APPROVED)
+            serializer = self.get_serializer(issue).data
+            serializer["contact"] = "info.reportit@gmail.com"
             # we have found the official here
             officialUser = find_official_for_point(issue.location)
-            send_push_notification(tokens=officialUser.user.fcm_tokens,title=f"A New Issue Has Been Assigned to You from {issue.location}")
-            # somehow find official and assign issue to him
-            # issue.official = offcialUser
-            # officialUser.assignedIssues.append(issue)
-            serializer = self.get_serializer(issue).data
-            # serializer["official_data"] = officialUser
+            if officialUser:
+                send_push_notification(tokens=officialUser.user.fcm_tokens, title=f"A New Issue Has Been Assigned to You from {issue.location}")
+                officialUser.assigned_issues.append(issue)
+                serializer["contact"]=officialUser.user.email
+                officialUser.save()
+
+            serializer.save()
             return self.success_response(
                 message="Issue Approved",
                 data=serializer,
@@ -365,11 +368,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         if existing_issue:
             return self.error_response(
                 message="Same Issue Exists within your Area",
-                # data={
-                #     'id': existing_issue.id,
-                #     'detail': 'This Issue Already Exists',
-                #     'distance': existing_issue.distance.m  # Optional: include distance to the existing issue
-                # },
                 data=existing_issue,
                 status_code=status.HTTP_400_BAD_REQUEST
             )
@@ -604,17 +602,6 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         self.perform_update(serializer)
 
         return self.success_response(message="User Updated", data=serializer.data)
-    
-    def verifyOfficial(self, request, *args, **kwargs):
-        # official = request.params.get(id)
-        # official.verified = true
-        # official.save()
-        # return success(official)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return self.success_response(message="Offical Updated", data=serializer.data)
 
     def perform_update(self, serializer):
         serializer.save()
@@ -651,7 +638,7 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         )
     
 class OfficialViewSet(viewsets.ModelViewSet, StandardResponseMixin):
-    queryset = MyApiUser.objects.all()
+    queryset = MyApiOfficial.objects.all()
     serializer_class = OfficialSerializer
     permission_classes = [IsAuthenticated]
 
@@ -659,33 +646,44 @@ class OfficialViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         action_permissions = {
             'list': [IsAdmin],
             'retrieve': [IsUser],
-            'create': [IsAuthenticated, IsAdmin],
+            'create': [IsOfficial],
             'update': [IsAuthenticated],
             'partial_update': [IsAuthenticated],
             'destroy': [IsAuthenticated],
+            "verify": [IsAdmin],
         }
         permission_classes = action_permissions.get(self.action, [IsAuthenticated])
         return [permission() for permission in permission_classes]
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            paginated_data = self.get_paginated_response(serializer.data).data
+            return self.success_response(message="Official List", data=paginated_data)
+        serializer = self.get_serializer(queryset, many=True)
+        return self.success_response(message="Official List", data=serializer.data)
+
     def create(self, request, *args, **kwargs):
-        email = request.data.get("email")
-        username = request.data.get("username")
-        
-        if not email or not username:
-            self.error_response(
-                message="Email and username are required to update user role to official.", 
-                status_code=status.HTTP_403_FORBIDDEN)
-
-        try:
-            user = MyApiUser.objects.get(email=email)
-        except MyApiUser.DoesNotExist:
-            return self.error_response(message="User not found.", status=status.HTTP_404_NOT_FOUND)
-
-        # Update user fields to make them an official
-        user.role = "official"
-        user.username = username  # Ensure username matches request data
-        user.is_social = False  # Ensures this account is not marked as a social login
-        user.save()
-
-        serializer = self.get_serializer(user)
-        return self.success_response(message="User updated to official successfully", data=serializer.data)
+        user = request.user
+        official = {
+            "user": user.id,
+            "district_name": request.data.get("district_name"),
+            "city_name": request.data.get("city_name"),
+            "country_name": request.data.get("country_name"),
+        }
+        serializer = self.get_serializer(data=official)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return self.success_response(message="Official Created!", data={
+            "official": serializer.data,
+        }, status_code=status.HTTP_201_CREATED)
+    
+    @action(detail=True, url_name="verify", methods=["patch"])
+    def verify(self, request, *args, **kwargs):
+        official = self.get_object()
+        official.user.verified = True
+        official.user.save()
+        serializer = self.get_serializer(instance=official)
+        return self.success_response(message="Official Updated", data=serializer.data, status_code=status.HTTP_200_OK)
