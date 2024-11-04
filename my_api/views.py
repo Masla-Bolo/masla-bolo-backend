@@ -350,9 +350,9 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         serializer.is_valid(raise_exception=True)
 
         # Get latitude and longitude from validated data
-        latitude = serializer.validated_data['latitude']
-        longitude = serializer.validated_data['longitude']
-        
+        latitude =  float(serializer.validated_data['latitude'])
+        longitude = float(serializer.validated_data['longitude'])
+       
         # Create a Point object for the issue location
         issue_location = Point(longitude, latitude, srid=4326)
 
