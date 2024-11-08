@@ -178,7 +178,7 @@ class Issue(models.Model):
     images = models.JSONField()
     issue_status = models.CharField(
         max_length=15,
-        choices=ISSUE_STATUS,
+        # choices=ISSUE_STATUS,
         default=NOT_APPROVED
     )
     is_anonymous = models.BooleanField(default=False)
