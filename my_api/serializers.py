@@ -187,16 +187,14 @@ class IssueSerializer(serializers.ModelSerializer):
     is_liked = serializers.SerializerMethodField()
     class Meta:
         model = Issue
-        fields = ['id', 'title', 'user', 
-                  'latitude', 'longitude', 
-                  'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments_count", "is_liked", 'created_at', 'updated_at']
+        fields = ['id', 'title', 'user', "location", 'description', 'categories', 'images', 'issue_status', 'is_anonymous', "likes_count", "comments_count", "is_liked", 'created_at', 'updated_at']
         read_only_fields = ['user', 'created_at', 'updated_at', 'comments_count']
 
-    def to_representation(self, obj: Issue):
-        representation = super().to_representation(obj)
-        representation['latitude'] = round(float(representation['latitude']), 12)
-        representation['longitude'] = round(float(representation['longitude']), 12)
-        return representation
+    # def to_representation(self, obj: Issue):
+    #     representation = super().to_representation(obj)
+    #     representation['latitude'] = round(float(representation['latitude']), 12)
+    #     representation['longitude'] = round(float(representation['longitude']), 12)
+    #     return representation
     
     def get_user(self, obj: Issue) -> dict: 
         return {

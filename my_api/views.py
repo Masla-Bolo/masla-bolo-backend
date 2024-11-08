@@ -54,11 +54,12 @@ class RegisterView(generics.CreateAPIView, StandardResponseMixin):
             )
         else:
             refresh = RefreshToken.for_user(user)
+            user_data = RegisterSerializer(user).data
             return self.success_response(
                 message="Account Registered Successfully!!",
                 data={
                     'token': str(refresh.access_token),
-                    "user": user
+                    "user": user_data
                 },
                 status_code=status.HTTP_200_OK
             )
@@ -165,22 +166,23 @@ class LoginView(generics.GenericAPIView, StandardResponseMixin):
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
+        role = request.data.get("role")
+        
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            refresh = RefreshToken.for_user(user)
-            user_data = MyApiUserSerializer(user).data
+            
+            if user.role == role:
+                if not user.verified and user.role == MyApiUser.USER:
+                    return self.success_response(message="Email Not Verified!",data={
+                        'user': user_data
+                    }, status_code=status.HTTP_200_OK)
+            
+                update_last_login(None, user)
 
-            if not user.verified and user.role == MyApiUser.USER:
-                return self.success_response(message="Email Not Verified!",data={
+                return self.success_response(message="Login Successful!",data={
+                    'token': str(refresh.access_token),
                     'user': user_data
                 }, status_code=status.HTTP_200_OK)
-            
-            update_last_login(None, user)
-            
-            return self.success_response(message="Login Successful!",data={
-                'token': str(refresh.access_token),
-                'user': user_data
-            }, status_code=status.HTTP_200_OK)
         
         return self.error_response(message="Incorrect Credentials", data={"VerificationError"}, status_code=status.HTTP_401_UNAUTHORIZED)
 
@@ -273,7 +275,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         return self.success_response(message="Fetched Your Issues Successfully!!", data=serializer.data)
     
     @action(detail=False, permission_classes=[IsOfficial]) 
-    def myOfficialIssues(self, request, *args, **kwargs):
+    def my_official_issues(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset().filter(user=request.user))
         page = self.paginate_queryset(queryset)
         
