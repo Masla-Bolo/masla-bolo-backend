@@ -187,7 +187,7 @@ class Issue(models.Model):
     issue_status = models.CharField(
         max_length=15,
         # choices=ISSUE_STATUS,
-        default=NOT_APPROVED
+        default=NOT_APPROVED,
     )
     is_anonymous = models.BooleanField(default=False)
     likes_count = models.PositiveIntegerField(default=0)
