@@ -1,15 +1,17 @@
-from my_api import views
 from django.urls import include, path
+
+from my_api import views
+
 from .views import (
-    RegisterView, 
     LoginView,
+    RegisterView,
+    SendEmailView,
     SocialRegisterView,
     VerifyEmailView,
-    SendEmailView
 )
-from rest_framework_simplejwt.views import TokenRefreshView
-from rest_framework import routers
 
+from rest_framework import routers
+from rest_framework_simplejwt.views import TokenRefreshView
 
 router = routers.DefaultRouter()
 router.register(r"issues", views.IssueViewSet, basename="issues")
@@ -19,10 +21,10 @@ router.register(r"officials", views.OfficialViewSet, basename="officials")
 
 urlpatterns = [
     path("", include(router.urls)),
-    path('register/', RegisterView.as_view(), name='register'),
-    path('social-register/', SocialRegisterView.as_view(), name='social-register'),
-    path('login/', LoginView.as_view(), name='login'),
-    path('send-email-verification/', SendEmailView.as_view(), name='send-email'),
-    path('verify-email/', VerifyEmailView.as_view(), name='verify-email'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path("register/", RegisterView.as_view(), name="register"),
+    path("social-register/", SocialRegisterView.as_view(), name="social-register"),
+    path("login/", LoginView.as_view(), name="login"),
+    path("send-email-verification/", SendEmailView.as_view(), name="send-email"),
+    path("verify-email/", VerifyEmailView.as_view(), name="verify-email"),
+    path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
 ]
