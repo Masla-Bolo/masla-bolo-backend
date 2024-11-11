@@ -185,7 +185,9 @@ class Issue(models.Model):
     categories = models.JSONField()
     images = models.JSONField()
     issue_status = models.CharField(
-        max_length=15, choices=ISSUE_STATUS, default=NOT_APPROVED
+        max_length=15,
+        # choices=ISSUE_STATUS,
+        default=NOT_APPROVED
     )
     is_anonymous = models.BooleanField(default=False)
     likes_count = models.PositiveIntegerField(default=0)
