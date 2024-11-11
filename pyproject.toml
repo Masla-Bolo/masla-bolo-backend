@@ -25,7 +25,7 @@ sections = [
     "LOCALFOLDER",
     "REST_FRAMEWORK"
 ]
-known_django = ["django"]
-known_rest_framework = ["rest_framework"]
-known_first_party = ["my_api"]
+known_django = ["django", "django_filters"]
+known_rest_framework = ["rest_framework", "rest_framework_simplejwt"]
+known_first_party = ["my_api", "channels"]
 skip = ["migrations"]
