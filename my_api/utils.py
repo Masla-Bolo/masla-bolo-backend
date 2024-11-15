@@ -200,3 +200,9 @@ def get_district_boundary(district_name, city, country):
     except Exception as e:
         print(f"Error: {e}")
         return None
+
+def remove_keys_from_dict(d: dict, keys: list):
+    temp_dict = d
+    for key in keys:
+        temp_dict.pop(key)
+    return temp_dict
