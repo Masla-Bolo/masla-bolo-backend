@@ -1,3 +1,4 @@
+from pprint import pprint
 import random
 import time
 from datetime import timedelta
@@ -32,7 +33,7 @@ from .serializers import (
     SocialRegisterSerializer,
     VerifyEmailSerializer,
 )
-from .utils import find_official_for_point, send_push_notification
+from .utils import find_official_for_point, remove_keys_from_dict, send_push_notification
 
 from rest_framework import filters, generics, status, viewsets
 from rest_framework.decorators import action
@@ -371,13 +372,27 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         )
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        # pprint(request.data)
+        latitude = float(request.data["latitude"])
+        longitude = float(request.data["longitude"])
+        issue_location = Point(longitude, latitude, srid=4326)
+        # print(issue_location)
+        cleaned_data = remove_keys_from_dict(request.data.copy(), ["longitude", "latitude"])
+        # entries_to_remove = ('latitude', 'longitude')
+        # for key in entries_to_remove:
+        #     cleaned_data.pop(key, None)
+        # # del cleaned_data["longitude"]
+        # # del cleaned_data["latitude"]
+        cleaned_data["location"] = issue_location
+
+        serializer = self.get_serializer(data=cleaned_data)
         serializer.is_valid(raise_exception=True)
 
-        latitude = float(serializer.validated_data["latitude"])
-        longitude = float(serializer.validated_data["longitude"])
+        # latitude = float(serializer.validated_data["latitude"])
+        # longitude = float(serializer.validated_data["longitude"])
+        # print(latitude, longitude)
 
-        issue_location = Point(longitude, latitude, srid=4326)
+        # issue_location = Point(longitude, latitude, srid=4326)
 
         distance_threshold = D(m=100)
 
@@ -389,11 +404,15 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             .annotate(distance=Distance("location", issue_location))
             .first()
         )
+        # pprint(existing_issue)
 
         if existing_issue:
+            existing_issue_data = self.get_serializer(existing_issue).data
+            # pprint(existing_issue_data)
+
             return self.error_response(
                 message="Same Issue Exists within your Area",
-                data=existing_issue,
+                data=existing_issue_data,
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
