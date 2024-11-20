@@ -3,7 +3,7 @@ from django.contrib.gis.geos import Point
 from django.db.models import Count, Exists, OuterRef, Prefetch
 from django.utils import timezone
 
-from .models import Comment, Issue, Like, MyApiOfficial, MyApiUser
+from .models import Comment, Issue, Like, MyApiOfficial, MyApiUser, Notification
 
 from rest_framework import serializers
 
@@ -171,6 +171,13 @@ class LikeSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at"]
 
 
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ["user", "title", "body", "created_at"]
+        read_only_fields = ["created_at"]
+
+
 class RecursiveSerializer(serializers.Serializer):
     def to_representation(self, value):
         serializer = self.parent.parent.__class__(value, context=self.context)
@@ -264,12 +271,6 @@ class IssueSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["user", "created_at", "updated_at", "comments_count"]
-
-    # def to_representation(self, obj: Issue):
-    #     representation = super().to_representation(obj)
-    #     representation['latitude'] = round(float(representation['latitude']), 12)
-    #     representation['longitude'] = round(float(representation['longitude']), 12)
-    #     return representation
 
     def get_user(self, obj: Issue) -> dict:
         return {

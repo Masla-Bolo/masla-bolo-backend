@@ -18,6 +18,7 @@ router.register(r"issues", views.IssueViewSet, basename="issues")
 router.register(r"users", views.UserViewSet, basename="users")
 router.register(r"comments", views.CommentViewSet, basename="comments")
 router.register(r"officials", views.OfficialViewSet, basename="officials")
+router.register(r"notifications", views.NotificationViewSet, basename="notifications")
 
 urlpatterns = [
     path("", include(router.urls)),

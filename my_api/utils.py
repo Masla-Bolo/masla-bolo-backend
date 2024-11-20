@@ -1,6 +1,5 @@
 import requests
 from firebase_admin import messaging
-
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -89,29 +88,38 @@ def custom_exception_handler(exc, context):
 
     return response
 
-
 def send_push_notification(tokens, title, body):
-    if not isinstance(tokens, list):
-        tokens = [tokens]
+        if not isinstance(tokens, list):
+            tokens = [tokens]
 
-    tokens = [str(token) for token in tokens]
-    message = messaging.MulticastMessage(
-        notification=messaging.Notification(title=str(title), body=str(body)),
-        tokens=tokens,
-    )
-    try:
-        response = messaging.send_multicast(message)
-        print(f"Notification Sent, Response is: {response}")
-        return {
-            "status": "success",
-            "success_count": response.success_count,
-            "failure_count": response.failure_count,
-            "responses": response.responses,
-        }
-    except Exception as e:
-        print(f"Notification Not Sent, Exception is: {e}")
-        return {"status": "error", "error": str(e)}
-
+        tokens = [str(token) for token in tokens]
+        message = messaging.MulticastMessage(
+            notification=messaging.Notification(title=str(title), body=str(body), image=str()),
+            tokens=tokens,
+        )
+        # message = messaging.Message(
+        #     notification=messaging.Notification(title=str(title), body=str(body)),
+        #     token=tokens[0]
+        # )
+        print(f"TITLE IS {title}")
+        print(f"BODY IS {body}")
+        try:
+            response = messaging.send_multicast(message)
+            for i, resp in enumerate(response.responses):
+                if resp.success:
+                    print(f"Notification successfully sent to token {tokens[i]}")
+                else:
+                    print(f"Failed to send notification to token {tokens[i]}: {resp.exception}")
+            print(f"Notification Sent, Response is: {response}")
+            return {
+                "status": "success",
+                "success_count": response.success_count,
+                "failure_count": response.failure_count,
+                "responses": response.responses,
+            }
+        except Exception as e:
+            print(f"Notification Not Sent, Exception is: {e}")
+            return {"status": "error", "error": str(e)}
 
 def find_official_for_point(point):
     from .models import MyApiOfficial

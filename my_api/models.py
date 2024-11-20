@@ -186,7 +186,7 @@ class Issue(models.Model):
     images = models.JSONField()
     issue_status = models.CharField(
         max_length=15,
-        # choices=ISSUE_STATUS,
+        choices=ISSUE_STATUS,
         default=NOT_APPROVED,
     )
     is_anonymous = models.BooleanField(default=False)
@@ -285,7 +285,18 @@ class Like(models.Model):
         return (
             f"Like by {self.user.username} on comment: {self.comment.content[:20]}..."
         )
+    
+class Notification(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    title = models.TextField()
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
 
 # approve ki patch API -> admin issue ka status approve karega...woh bolega yeh issue legit hai...woh db mein dhoondega ke
 # iss issue ke lat long ke andar konsa official ata hai...
