@@ -445,7 +445,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         user = request.user
         like, created = Like.objects.get_or_create(user=user, issue=issue)
         send_push_notification(
-            request.user.fcm_tokens,
+            user,
             "Issue Like/unlike",
             "Body Of the Notification, Ps: You can only send a String",
         )

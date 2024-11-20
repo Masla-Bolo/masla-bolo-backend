@@ -5,7 +5,6 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
-
 def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
 
@@ -88,7 +87,10 @@ def custom_exception_handler(exc, context):
 
     return response
 
-def send_push_notification(tokens, title, body):
+def send_push_notification(user, title, body):
+        from .models import Notification
+        Notification.objects.create(user=user, title=str(title), body=str(body))
+        tokens = user.fcm_tokens
         if not isinstance(tokens, list):
             tokens = [tokens]
 
@@ -97,14 +99,10 @@ def send_push_notification(tokens, title, body):
             notification=messaging.Notification(title=str(title), body=str(body), image=str()),
             tokens=tokens,
         )
-        # message = messaging.Message(
-        #     notification=messaging.Notification(title=str(title), body=str(body)),
-        #     token=tokens[0]
-        # )
         print(f"TITLE IS {title}")
         print(f"BODY IS {body}")
         try:
-            response = messaging.send_multicast(message)
+            response = messaging.send_each_for_multicast(message)
             for i, resp in enumerate(response.responses):
                 if resp.success:
                     print(f"Notification successfully sent to token {tokens[i]}")
