@@ -444,12 +444,16 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         issue = self.get_object()
         user = request.user
         like, created = Like.objects.get_or_create(user=user, issue=issue)
-        send_push_notification(
-            user,
-            "Issue Like/unlike",
-            "Body Of the Notification, Ps: You can only send a String",
+        serializer = self.get_serializer(issue).data
+        createdNotification = Notification.objects.create(
+            user=user,
+            screen="issueDetail",
+            screen_id=serializer["id"],
+            title="Issue Liked",
+            description="Issue Description"
         )
-
+        send_push_notification(createdNotification)  
+        
         if created:
             issue.likes_count += 1
             issue.save()

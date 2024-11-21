@@ -288,8 +288,10 @@ class Like(models.Model):
     
 class Notification(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    screen = models.TextField(default="issueDetail")
+    screen_id = models.IntegerField(null=True);
     title = models.TextField()
-    body = models.TextField()
+    description = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

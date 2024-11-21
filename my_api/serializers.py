@@ -174,7 +174,7 @@ class LikeSerializer(serializers.ModelSerializer):
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
-        fields = ["user", "title", "body", "created_at"]
+        fields = ["user", "title", "description", "created_at", "screen", "screen_id"]
         read_only_fields = ["created_at"]
 
 

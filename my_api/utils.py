@@ -1,3 +1,5 @@
+import json
+from typing import Optional
 import requests
 from firebase_admin import messaging
 from rest_framework import status
@@ -87,20 +89,26 @@ def custom_exception_handler(exc, context):
 
     return response
 
-def send_push_notification(user, title, body):
-        from .models import Notification
-        Notification.objects.create(user=user, title=str(title), body=str(body))
-        tokens = user.fcm_tokens
+def send_push_notification(notification):
+        data_payload = {
+            "screen": str(notification.screen),
+            "screen_id": str(notification.screen_id),
+            "title": str(notification.title),
+            "description": str(notification.description),
+            "created_at": str(notification.created_at),
+        }
+        tokens = notification.user.fcm_tokens
         if not isinstance(tokens, list):
             tokens = [tokens]
 
         tokens = [str(token) for token in tokens]
         message = messaging.MulticastMessage(
-            notification=messaging.Notification(title=str(title), body=str(body), image=str()),
+            data=data_payload,
+            notification=messaging.Notification(title=str(notification.title)),
             tokens=tokens,
         )
-        print(f"TITLE IS {title}")
-        print(f"BODY IS {body}")
+        print(f"TITLE IS {notification.title}")
+        print(f"Description IS {notification.description}")
         try:
             response = messaging.send_each_for_multicast(message)
             for i, resp in enumerate(response.responses):
