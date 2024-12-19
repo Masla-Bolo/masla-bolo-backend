@@ -290,7 +290,20 @@ class Like(models.Model):
         return (
             f"Like by {self.user.username} on comment: {self.comment.content[:20]}..."
         )
+    
+class Notification(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    screen = models.TextField(default="issueDetail")
+    screen_id = models.IntegerField(null=True);
+    title = models.TextField()
+    description = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
 
 # approve ki patch API -> admin issue ka status approve karega...woh bolega yeh issue legit hai...woh db mein dhoondega ke
 # iss issue ke lat long ke andar konsa official ata hai...

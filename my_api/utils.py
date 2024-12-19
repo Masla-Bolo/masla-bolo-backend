@@ -1,11 +1,11 @@
+import json
+from typing import Optional
 import requests
 from firebase_admin import messaging
-
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
-
 
 def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
@@ -89,29 +89,43 @@ def custom_exception_handler(exc, context):
 
     return response
 
-
-def send_push_notification(tokens, title, body):
-    if not isinstance(tokens, list):
-        tokens = [tokens]
-
-    tokens = [str(token) for token in tokens]
-    message = messaging.MulticastMessage(
-        notification=messaging.Notification(title=str(title), body=str(body)),
-        tokens=tokens,
-    )
-    try:
-        response = messaging.send_multicast(message)
-        print(f"Notification Sent, Response is: {response}")
-        return {
-            "status": "success",
-            "success_count": response.success_count,
-            "failure_count": response.failure_count,
-            "responses": response.responses,
+def send_push_notification(notification):
+        data_payload = {
+            "screen": str(notification.screen),
+            "screen_id": str(notification.screen_id),
+            "title": str(notification.title),
+            "description": str(notification.description),
+            "created_at": str(notification.created_at),
         }
-    except Exception as e:
-        print(f"Notification Not Sent, Exception is: {e}")
-        return {"status": "error", "error": str(e)}
+        tokens = notification.user.fcm_tokens
+        if not isinstance(tokens, list):
+            tokens = [tokens]
 
+        tokens = [str(token) for token in tokens]
+        message = messaging.MulticastMessage(
+            data=data_payload,
+            notification=messaging.Notification(title=str(notification.title)),
+            tokens=tokens,
+        )
+        print(f"TITLE IS {notification.title}")
+        print(f"Description IS {notification.description}")
+        try:
+            response = messaging.send_each_for_multicast(message)
+            for i, resp in enumerate(response.responses):
+                if resp.success:
+                    print(f"Notification successfully sent to token {tokens[i]}")
+                else:
+                    print(f"Failed to send notification to token {tokens[i]}: {resp.exception}")
+            print(f"Notification Sent, Response is: {response}")
+            return {
+                "status": "success",
+                "success_count": response.success_count,
+                "failure_count": response.failure_count,
+                "responses": response.responses,
+            }
+        except Exception as e:
+            print(f"Notification Not Sent, Exception is: {e}")
+            return {"status": "error", "error": str(e)}
 
 def find_official_for_point(point):
     from .models import MyApiOfficial

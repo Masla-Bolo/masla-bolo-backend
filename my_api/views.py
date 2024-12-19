@@ -21,13 +21,14 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
 from .mixins import StandardResponseMixin
-from .models import Comment, Issue, Like, MyApiOfficial, MyApiUser
+from .models import Comment, Issue, Like, MyApiOfficial, MyApiUser, Notification
 from .permissions import IsAdmin, IsOfficial, IsUser
 from .serializers import (
     CommentSerializer,
     IssueSerializer,
     LoginSerializer,
     MyApiUserSerializer,
+    NotificationSerializer,
     OfficialSerializer,
     RegisterSerializer,
     SocialRegisterSerializer,
@@ -443,12 +444,16 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         issue = self.get_object()
         user = request.user
         like, created = Like.objects.get_or_create(user=user, issue=issue)
-        send_push_notification(
-            request.user.fcm_tokens,
-            "Issue Like Called",
-            "Body Of the Notification, Ps: You can only send a String",
+        serializer = self.get_serializer(issue).data
+        createdNotification = Notification.objects.create(
+            user=user,
+            screen="issueDetail",
+            screen_id=serializer["id"],
+            title="Issue Liked",
+            description="Issue Description"
         )
-
+        send_push_notification(createdNotification)  
+        
         if created:
             issue.likes_count += 1
             issue.save()
@@ -733,8 +738,6 @@ class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             data={},
             status_code=status.HTTP_200_OK,
         )
-
-
 class OfficialViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = MyApiOfficial.objects.all()
     serializer_class = OfficialSerializer
@@ -792,4 +795,59 @@ class OfficialViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             message="Official Updated",
             data=serializer.data,
             status_code=status.HTTP_200_OK,
+        )
+
+
+class NotificationViewSet(viewsets.ModelViewSet, StandardResponseMixin):
+    queryset = Notification.objects.all()
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_permissions(self):
+        """
+        Instantiates and returns the list of permissions that this view requires.
+        """
+        action_permissions = {
+            "list": [IsAuthenticated],
+            "my": [IsAuthenticated],
+        }
+
+        permission_classes = action_permissions.get(self.action, [IsAuthenticated])
+        return [permission() for permission in permission_classes]
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            paginated_data = self.get_paginated_response(serializer.data).data
+            return self.success_response(
+                message="Fetched Successfully!!",
+                data=paginated_data,
+                status_code=status.HTTP_200_OK,
+            )
+
+        serializer = self.get_serializer(queryset, many=True)
+        return self.success_response(
+            message="Fetched Successfully!!",
+            data=serializer.data,
+            status_code=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, permission_classes=[IsAuthenticated])
+    def my(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset().filter(user=request.user))
+        page = self.paginate_queryset(queryset)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            paginated_data = self.get_paginated_response(serializer.data).data
+            return self.success_response(
+                message="Fetched Your Notifications Successfully!!", data=paginated_data
+            )
+
+        serializer = self.get_serializer(queryset, many=True)
+        return self.success_response(
+            message="Fetched Your Notifications Successfully!!", data=serializer.data
         )
