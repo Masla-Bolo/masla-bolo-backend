@@ -186,7 +186,7 @@ class Issue(models.Model):
     images = models.JSONField()
     issue_status = models.CharField(
         max_length=15,
-        # choices=ISSUE_STATUS,
+        choices=ISSUE_STATUS,
         default=NOT_APPROVED,
     )
     is_anonymous = models.BooleanField(default=False)
@@ -268,6 +268,11 @@ class Like(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        indexes = [
+            models.Index(fields=['user', 'issue']),
+            models.Index(fields=['user', 'comment']),
+            models.Index(fields=['created_at']),
+        ]
         constraints = [
             models.UniqueConstraint(fields=["user", "issue"], name="unique_issue_like"),
             models.UniqueConstraint(
