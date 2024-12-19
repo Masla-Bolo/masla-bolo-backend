@@ -48,7 +48,7 @@ class IssueAdmin(ModelAdmin):
     fieldsets = (
         (None, {"fields": ("title", "description", "user", "categories", "images")}),
         ("Status", {"fields": ("issue_status",)}),
-        ("Location", {"fields": ("latitude", "longitude")}),
+        ("Location", {"fields": ("location",)}),
         (
             "Metadata",
             {
