@@ -87,7 +87,9 @@ class SocialRegisterView(generics.CreateAPIView, StandardResponseMixin):
 class SendEmailView(APIView, StandardResponseMixin):
     def get(self, request, refresh_code=False):
         email = self.request.query_params.get("email")
+        # print(email)
         user = MyApiUser.objects.get(email=email)
+        # print(user)
 
         if user.verified:
             self.error_response(
@@ -135,4 +137,4 @@ class VerifyEmailView(APIView, StandardResponseMixin):
                 data={"token": str(refresh.access_token), "user": user_data},
                 status_code=status.HTTP_200_OK,
             )
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+        return self.error_response(message="Serializer Not Valid", data=serializer.data, status_code=status.HTTP_400_BAD_REQUEST)

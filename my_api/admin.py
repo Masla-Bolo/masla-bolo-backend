@@ -8,6 +8,7 @@ from .models import Comment, Issue, Like, MyApiOfficial, MyApiUser
 
 
 class MyApiUserAdmin(ModelAdmin):
+    actions = ["delete_selected"]
     list_display = (
         "username",
         "email",
@@ -77,14 +78,22 @@ class LikeAdmin(ModelAdmin):
     list_filter = ("created_at",)
     readonly_fields = ("created_at",)
 
-
 class MyApiOfficialAdmin(ModelAdmin):
-    list_display = ("user", "area_range", "country_code")
+    list_display = ("user","district_name", "country_code")
     search_fields = ("user__username", "country_code")
-    list_filter = ("country_code",)
+    list_filter = ("country_code", "city_name", "country_name", "district_name")
     fieldsets = (
-        (None, {"fields": ("user", "assigned_issues", "area_range", "country_code")}),
+        (None, {"fields": (
+            "user",
+            "assigned_issues",
+            "area_range",
+        )}),
+        ("Locations", {"fields": ("district_name", "city_name", "country_name", "country_code",)}),
     )
+    readonly_fields = ("country_code","city_name",
+            "country_name",
+            "district_name",)
+
 
 
 class CustomAdminSite(UnfoldAdminSite):

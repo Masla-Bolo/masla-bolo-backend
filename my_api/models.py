@@ -51,9 +51,9 @@ class MyApiUserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, username, password):
+    def create_superuser(self, email, username, password, location=None):
         user = self.create_user(
-            email, username, location=None, password=password, role=MyApiUser.ADMIN
+            email, username, location=location, password=password, role=MyApiUser.ADMIN
         )  # Ensure role is 'admin' for superuser
         user.is_staff = True
         user.is_superuser = True
