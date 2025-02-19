@@ -1,24 +1,27 @@
 from django.urls import include, path
 
-from my_api import views
-
-from .views import (
+from my_api.views import (
     LoginView,
     RegisterView,
     SendEmailView,
     SocialRegisterView,
     VerifyEmailView,
+    IssueViewSet,
+    UserViewSet,
+    CommentViewSet,
+    OfficialViewSet,
+    NotificationViewSet
 )
 
 from rest_framework import routers
 from rest_framework_simplejwt.views import TokenRefreshView
 
 router = routers.DefaultRouter()
-router.register(r"issues", views.IssueViewSet, basename="issues")
-router.register(r"users", views.UserViewSet, basename="users")
-router.register(r"comments", views.CommentViewSet, basename="comments")
-router.register(r"officials", views.OfficialViewSet, basename="officials")
-router.register(r"notifications", views.NotificationViewSet, basename="notifications")
+router.register(r"issues", IssueViewSet, basename="issues")
+router.register(r"users", UserViewSet, basename="users")
+router.register(r"comments", CommentViewSet, basename="comments")
+router.register(r"officials", OfficialViewSet, basename="officials")
+router.register(r"notifications", NotificationViewSet, basename="notifications")
 
 urlpatterns = [
     path("", include(router.urls)),
