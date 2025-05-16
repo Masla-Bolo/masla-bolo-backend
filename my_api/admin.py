@@ -1,13 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 
+from leaflet.admin import LeafletGeoAdmin
 from unfold.admin import ModelAdmin
 from unfold.sites import UnfoldAdminSite
 
 from .models import Comment, Issue, Like, MyApiOfficial, MyApiUser
 
 
-class MyApiUserAdmin(ModelAdmin):
+class MyApiUserAdmin(LeafletGeoAdmin, ModelAdmin):
     actions = ["delete_selected"]
     list_display = (
         "username",
@@ -21,7 +22,7 @@ class MyApiUserAdmin(ModelAdmin):
     list_filter = ("is_active", "is_superuser", "last_login", "verified")
     readonly_fields = ("last_login", "password", "created_at")
     fieldsets = (
-        (None, {"fields": ("username", "email", "password", "role")}),
+        (None, {"fields": ("username", "email", "password", "role", "location")}),
         ("Permissions", {"fields": ("is_active", "is_superuser", "verified")}),
         ("Important dates", {"fields": ("created_at", "last_login")}),
     )
@@ -41,7 +42,7 @@ class MyApiUserAdmin(ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
-class IssueAdmin(ModelAdmin):
+class IssueAdmin(LeafletGeoAdmin, ModelAdmin):
     list_display = ("title", "issue_status", "created_at", "user")
     list_filter = ("issue_status", "created_at")
     search_fields = ("title", "description")
@@ -78,22 +79,40 @@ class LikeAdmin(ModelAdmin):
     list_filter = ("created_at",)
     readonly_fields = ("created_at",)
 
-class MyApiOfficialAdmin(ModelAdmin):
-    list_display = ("user","district_name", "country_code")
+
+class MyApiOfficialAdmin(LeafletGeoAdmin, ModelAdmin):
+    list_display = ("user", "district_name", "country_code")
     search_fields = ("user__username", "country_code")
     list_filter = ("country_code", "city_name", "country_name", "district_name")
     fieldsets = (
-        (None, {"fields": (
-            "user",
-            "assigned_issues",
-            "area_range",
-        )}),
-        ("Locations", {"fields": ("district_name", "city_name", "country_name", "country_code",)}),
+        (
+            None,
+            {
+                "fields": (
+                    "user",
+                    "assigned_issues",
+                    "area_range",
+                )
+            },
+        ),
+        (
+            "Locations",
+            {
+                "fields": (
+                    "district_name",
+                    "city_name",
+                    "country_name",
+                    "country_code",
+                )
+            },
+        ),
     )
-    readonly_fields = ("country_code","city_name",
-            "country_name",
-            "district_name",)
-
+    readonly_fields = (
+        "country_code",
+        "city_name",
+        "country_name",
+        "district_name",
+    )
 
 
 class CustomAdminSite(UnfoldAdminSite):
