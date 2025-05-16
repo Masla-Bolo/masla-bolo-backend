@@ -1,5 +1,14 @@
-from .common import (LoginSerializer, generics, StandardResponseMixin, MyApiUserSerializer,
-                             RefreshToken, status, MyApiUser,update_last_login)
+from .common import (
+    LoginSerializer,
+    MyApiUser,
+    MyApiUserSerializer,
+    RefreshToken,
+    StandardResponseMixin,
+    generics,
+    status,
+    update_last_login,
+)
+
 
 class LoginView(generics.GenericAPIView, StandardResponseMixin):
     serializer_class = LoginSerializer

@@ -1,8 +1,31 @@
 from .common import (
-    viewsets, status, StandardResponseMixin, IsAuthenticated, DjangoFilterBackend, filters, Issue,
-    IssueSerializer, IsAdmin, IsOfficial, IsUser, AllowAny, time, Point, Q, 
-    MyApiUser, Issue, Like, Notification, Distance,
-    find_official_for_point, send_push_notification, remove_keys_from_dict, action, connection, D)
+    AllowAny,
+    D,
+    Distance,
+    DjangoFilterBackend,
+    IsAdmin,
+    IsAuthenticated,
+    IsOfficial,
+    Issue,
+    IssueSerializer,
+    IsUser,
+    Like,
+    MyApiUser,
+    Notification,
+    Point,
+    Q,
+    StandardResponseMixin,
+    action,
+    connection,
+    filters,
+    find_official_for_point,
+    remove_keys_from_dict,
+    send_push_notification,
+    status,
+    time,
+    viewsets,
+)
+
 
 class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = Issue.objects.all()
@@ -183,7 +206,9 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         longitude = float(request.data["longitude"])
         issue_location = Point(longitude, latitude, srid=4326)
         # print(issue_location)
-        cleaned_data = remove_keys_from_dict(request.data.copy(), ["longitude", "latitude"])
+        cleaned_data = remove_keys_from_dict(
+            request.data.copy(), ["longitude", "latitude"]
+        )
         # entries_to_remove = ('latitude', 'longitude')
         # for key in entries_to_remove:
         #     cleaned_data.pop(key, None)
@@ -255,10 +280,10 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             screen="issueDetail",
             screen_id=serializer["id"],
             title="Issue Liked",
-            description="Issue Description"
+            description="Issue Description",
         )
-        send_push_notification(createdNotification)  
-        
+        send_push_notification(createdNotification)
+
         if created:
             issue.likes_count += 1
             issue.save()

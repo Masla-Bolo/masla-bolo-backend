@@ -1,11 +1,14 @@
 import json
 from typing import Optional
+
 import requests
 from firebase_admin import messaging
+
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
+
 
 def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
@@ -89,43 +92,47 @@ def custom_exception_handler(exc, context):
 
     return response
 
-def send_push_notification(notification):
-        data_payload = {
-            "screen": str(notification.screen),
-            "screen_id": str(notification.screen_id),
-            "title": str(notification.title),
-            "description": str(notification.description),
-            "created_at": str(notification.created_at),
-        }
-        tokens = notification.user.fcm_tokens
-        if not isinstance(tokens, list):
-            tokens = [tokens]
 
-        tokens = [str(token) for token in tokens]
-        message = messaging.MulticastMessage(
-            data=data_payload,
-            notification=messaging.Notification(title=str(notification.title)),
-            tokens=tokens,
-        )
-        print(f"TITLE IS {notification.title}")
-        print(f"Description IS {notification.description}")
-        try:
-            response = messaging.send_each_for_multicast(message)
-            for i, resp in enumerate(response.responses):
-                if resp.success:
-                    print(f"Notification successfully sent to token {tokens[i]}")
-                else:
-                    print(f"Failed to send notification to token {tokens[i]}: {resp.exception}")
-            print(f"Notification Sent, Response is: {response}")
-            return {
-                "status": "success",
-                "success_count": response.success_count,
-                "failure_count": response.failure_count,
-                "responses": response.responses,
-            }
-        except Exception as e:
-            print(f"Notification Not Sent, Exception is: {e}")
-            return {"status": "error", "error": str(e)}
+def send_push_notification(notification):
+    data_payload = {
+        "screen": str(notification.screen),
+        "screen_id": str(notification.screen_id),
+        "title": str(notification.title),
+        "description": str(notification.description),
+        "created_at": str(notification.created_at),
+    }
+    tokens = notification.user.fcm_tokens
+    if not isinstance(tokens, list):
+        tokens = [tokens]
+
+    tokens = [str(token) for token in tokens]
+    message = messaging.MulticastMessage(
+        data=data_payload,
+        notification=messaging.Notification(title=str(notification.title)),
+        tokens=tokens,
+    )
+    print(f"TITLE IS {notification.title}")
+    print(f"Description IS {notification.description}")
+    try:
+        response = messaging.send_each_for_multicast(message)
+        for i, resp in enumerate(response.responses):
+            if resp.success:
+                print(f"Notification successfully sent to token {tokens[i]}")
+            else:
+                print(
+                    f"Failed to send notification to token {tokens[i]}: {resp.exception}"
+                )
+        print(f"Notification Sent, Response is: {response}")
+        return {
+            "status": "success",
+            "success_count": response.success_count,
+            "failure_count": response.failure_count,
+            "responses": response.responses,
+        }
+    except Exception as e:
+        print(f"Notification Not Sent, Exception is: {e}")
+        return {"status": "error", "error": str(e)}
+
 
 def find_official_for_point(point):
     from .models import MyApiOfficial
@@ -215,8 +222,41 @@ def get_district_boundary(district_name, city, country):
         print(f"Error: {e}")
         return None
 
+
 def remove_keys_from_dict(d: dict, keys: list):
     temp_dict = d
     for key in keys:
         temp_dict.pop(key)
     return temp_dict
+
+def get_coordinates_from_geojson(geojson: dict) -> Optional[list]:
+    """
+    Extract coordinates from a GeoJSON object.
+
+    Parameters:
+    geojson (dict): GeoJSON object
+
+    Returns:
+    list: List of coordinates
+    """
+    if not geojson or "coordinates" not in geojson:
+        return None
+
+    if geojson["type"] == "Polygon":
+        return geojson["coordinates"][0]
+    elif geojson["type"] == "MultiPolygon":
+        return max(geojson["coordinates"], key=lambda x: len(x[0]))[0]
+    else:
+        return None
+    
+# if __name__ == "__main__":
+    # Example usage
+    # district_name = "Nazimabad"
+    # city = "Karachi"
+    # country = "Pakistan"
+    
+    # coordinates = get_district_boundary(district_name, city, country)
+    # if coordinates:
+    #     print(f"Coordinates for {district_name}: {coordinates}")
+    # else:
+    #     print("Failed to fetch coordinates.")

@@ -1,4 +1,4 @@
-from .common import serializers, Like
+from .common import Like, serializers
 
 
 class LikeSerializer(serializers.ModelSerializer):

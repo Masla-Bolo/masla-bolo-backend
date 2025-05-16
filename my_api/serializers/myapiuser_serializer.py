@@ -1,4 +1,4 @@
-from .common import serializers, MyApiUser
+from .common import MyApiUser, serializers
 
 
 class MyApiUserSerializer(serializers.ModelSerializer):
@@ -14,4 +14,5 @@ class MyApiUserSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "verified",
+            "location",
         ]

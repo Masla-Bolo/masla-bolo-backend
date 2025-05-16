@@ -1,15 +1,16 @@
 from .common import (
-    viewsets, 
-    StandardResponseMixin, 
-    MyApiUser, 
+    IsAdmin,
+    IsAuthenticated,
+    IsOfficial,
+    IsUser,
+    MyApiUser,
     MyApiUserSerializer,
-    IsAuthenticated, 
-    IsUser, 
-    IsAdmin, 
-    IsOfficial, 
-    status, 
-    action
+    StandardResponseMixin,
+    action,
+    status,
+    viewsets,
 )
+
 
 class UserViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = MyApiUser.objects.all()

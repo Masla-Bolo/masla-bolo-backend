@@ -2,9 +2,9 @@ from .comment_serializer import CommentSerializer
 from .issue_serializer import IssueSerializer
 from .like_serializer import LikeSerializer
 from .login_serializer import LoginSerializer
+from .myapiuser_serializer import MyApiUserSerializer
+from .notification_serializer import NotificationSerializer
 from .official_serializer import OfficialSerializer
 from .register_serializer import RegisterSerializer
 from .social_register_serializer import SocialRegisterSerializer
 from .verify_email_serializer import VerifyEmailSerializer
-from .myapiuser_serializer import MyApiUserSerializer
-from .notification_serializer import NotificationSerializer

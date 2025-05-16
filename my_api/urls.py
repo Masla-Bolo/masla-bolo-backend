@@ -1,16 +1,16 @@
 from django.urls import include, path
 
 from my_api.views import (
+    CommentViewSet,
+    IssueViewSet,
     LoginView,
+    NotificationViewSet,
+    OfficialViewSet,
     RegisterView,
     SendEmailView,
     SocialRegisterView,
-    VerifyEmailView,
-    IssueViewSet,
     UserViewSet,
-    CommentViewSet,
-    OfficialViewSet,
-    NotificationViewSet
+    VerifyEmailView,
 )
 
 from rest_framework import routers

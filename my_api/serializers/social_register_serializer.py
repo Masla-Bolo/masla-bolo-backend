@@ -1,4 +1,4 @@
-from .common import serializers, MyApiUser
+from .common import MyApiUser, serializers
 
 
 class SocialRegisterSerializer(serializers.ModelSerializer):

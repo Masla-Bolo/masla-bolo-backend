@@ -1,7 +1,7 @@
-from pprint import pprint
 import random
 import time
 from datetime import timedelta
+from pprint import pprint
 
 from django.conf import settings
 from django.contrib.auth.models import update_last_login
@@ -19,7 +19,6 @@ from django_filters.rest_framework import DjangoFilterBackend
 from asgiref.sync import async_to_sync
 
 from channels.layers import get_channel_layer
-
 from my_api.mixins import StandardResponseMixin
 from my_api.models import Comment, Issue, Like, MyApiOfficial, MyApiUser, Notification
 from my_api.permissions import IsAdmin, IsOfficial, IsUser
@@ -34,7 +33,11 @@ from my_api.serializers import (
     SocialRegisterSerializer,
     VerifyEmailSerializer,
 )
-from my_api.utils import find_official_for_point, remove_keys_from_dict, send_push_notification
+from my_api.utils import (
+    find_official_for_point,
+    remove_keys_from_dict,
+    send_push_notification,
+)
 
 from rest_framework import filters, generics, status, viewsets
 from rest_framework.decorators import action

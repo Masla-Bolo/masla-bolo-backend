@@ -1,4 +1,4 @@
-from .common import serializers, MyApiUser, Point
+from .common import MyApiUser, Point, serializers
 
 
 class RegisterSerializer(serializers.ModelSerializer):

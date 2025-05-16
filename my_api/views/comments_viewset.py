@@ -1,6 +1,22 @@
-from .common import (viewsets, StandardResponseMixin, Issue, Comment, Like, CommentSerializer,
-                             IsAuthenticated, AllowAny, status, MyApiUser, Q,
-                             get_object_or_404, action, get_channel_layer, async_to_sync, connection)
+from .common import (
+    AllowAny,
+    Comment,
+    CommentSerializer,
+    IsAuthenticated,
+    Issue,
+    Like,
+    MyApiUser,
+    Q,
+    StandardResponseMixin,
+    action,
+    async_to_sync,
+    connection,
+    get_channel_layer,
+    get_object_or_404,
+    status,
+    viewsets,
+)
+
 
 class CommentViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = Comment.objects.filter(parent__isnull=True)

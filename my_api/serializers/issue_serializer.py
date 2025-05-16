@@ -1,4 +1,4 @@
-from .common import serializers, Issue, Exists, Like, OuterRef
+from .common import Exists, Issue, Like, OuterRef, serializers
 
 
 class IssueSerializer(serializers.ModelSerializer):

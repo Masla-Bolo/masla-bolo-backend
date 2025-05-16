@@ -1,4 +1,4 @@
-from .common import serializers, MyApiUser, timezone
+from .common import MyApiUser, serializers, timezone
 
 
 class VerifyEmailSerializer(serializers.Serializer):

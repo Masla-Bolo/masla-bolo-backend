@@ -1,24 +1,24 @@
 from .common import (
+    APIView,
+    EmailMultiAlternatives,
     MyApiUser,
+    MyApiUserSerializer,
     RefreshToken,
     RegisterSerializer,
+    Response,
     SocialRegisterSerializer,
     StandardResponseMixin,
-    generics,
-    status,
-    APIView,
-    timezone,
-    timedelta,
-    random,
     VerifyEmailSerializer,
-    MyApiUserSerializer,
-    update_last_login,
+    generics,
+    random,
     render_to_string,
-    EmailMultiAlternatives,
-    Response,
-    settings
-
+    settings,
+    status,
+    timedelta,
+    timezone,
+    update_last_login,
 )
+
 
 class RegisterView(generics.CreateAPIView, StandardResponseMixin):
     queryset = MyApiUser.objects.all()
@@ -137,4 +137,8 @@ class VerifyEmailView(APIView, StandardResponseMixin):
                 data={"token": str(refresh.access_token), "user": user_data},
                 status_code=status.HTTP_200_OK,
             )
-        return self.error_response(message="Serializer Not Valid", data=serializer.data, status_code=status.HTTP_400_BAD_REQUEST)
+        return self.error_response(
+            message="Serializer Not Valid",
+            data=serializer.data,
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )

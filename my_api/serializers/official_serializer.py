@@ -1,4 +1,4 @@
-from .common import serializers, MyApiOfficial
+from .common import MyApiOfficial, serializers
 
 
 class OfficialSerializer(serializers.ModelSerializer):

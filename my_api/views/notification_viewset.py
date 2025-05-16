@@ -1,11 +1,19 @@
-from .common import (viewsets, StandardResponseMixin, Notification, NotificationSerializer,
-                             IsAuthenticated, action, status)
+from .common import (
+    IsAuthenticated,
+    Notification,
+    NotificationSerializer,
+    StandardResponseMixin,
+    action,
+    status,
+    viewsets,
+)
+
 
 class NotificationViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_permissions(self):
         """
         Instantiates and returns the list of permissions that this view requires.

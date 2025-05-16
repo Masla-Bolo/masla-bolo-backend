@@ -52,8 +52,8 @@ DEBUG = True
 GDAL_LIBRARY_PATH = os.getenv("gdal_path")
 GEOS_LIBRARY_PATH = os.getenv("geos_path")
 
-if os.getenv('proj_lib_path'):
-    os.environ['PROJ_LIB'] = os.getenv('proj_lib_path')
+if os.getenv("proj_lib_path"):
+    os.environ["PROJ_LIB"] = os.getenv("proj_lib_path")
 
 ALLOWED_HOSTS = ["*"]
 
@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     "django_filters",
     "rest_framework_simplejwt",
     "django.contrib.gis",
+    "leaflet",
 ]
 
 # Configure the default authentication classes

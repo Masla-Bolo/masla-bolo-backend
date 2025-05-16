@@ -1,4 +1,4 @@
-from .common import serializers, Notification
+from .common import Notification, serializers
 
 
 class NotificationSerializer(serializers.ModelSerializer):

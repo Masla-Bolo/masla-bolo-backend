@@ -1,4 +1,4 @@
-from .common import serializers, authenticate
+from .common import authenticate, serializers
 
 
 class LoginSerializer(serializers.Serializer):

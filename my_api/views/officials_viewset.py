@@ -1,5 +1,16 @@
-from .common import (viewsets, StandardResponseMixin, MyApiOfficial, OfficialSerializer, IsAuthenticated, 
-                             IsAdmin, IsUser, IsOfficial, status, action)
+from .common import (
+    IsAdmin,
+    IsAuthenticated,
+    IsOfficial,
+    IsUser,
+    MyApiOfficial,
+    OfficialSerializer,
+    StandardResponseMixin,
+    action,
+    status,
+    viewsets,
+)
+
 
 class OfficialViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     queryset = MyApiOfficial.objects.all()
