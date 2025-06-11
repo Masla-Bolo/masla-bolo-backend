@@ -14,3 +14,4 @@ python-dotenv==1.0.1
 django-unfold==0.50.0
 jsonschema<=4.23.0
 django-leaflet>=0.32.0
+channels_redis>=4.2.0
