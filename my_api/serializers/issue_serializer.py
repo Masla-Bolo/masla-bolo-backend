@@ -1,9 +1,17 @@
 from .common import Exists, Issue, Like, OuterRef, serializers
+from django.core.validators import MinLengthValidator
+from rest_framework.exceptions import ValidationError
 
 
 class IssueSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
+    title = serializers.CharField(
+        validators=[MinLengthValidator(5, message="Title must be at least 5 characters long")]
+    )
+    description = serializers.CharField(
+        validators=[MinLengthValidator(10, message="Description must be at least 10 characters long")]
+    )
 
     class Meta:
         model = Issue
@@ -46,3 +54,30 @@ class IssueSerializer(serializers.ModelSerializer):
         queryset = queryset.annotate(is_liked=like_exists)
 
         return queryset
+
+    def validate_categories(self, value):
+        if not value or not isinstance(value, list):
+            raise ValidationError("Categories must be a non-empty list")
+        
+        valid_categories = [choice[1] for choice in Issue.CATEGORY_CHOICES]
+        invalid_categories = [cat for cat in value if cat not in valid_categories]
+        # print(invalid_categories, valid_categories)
+        
+        if invalid_categories:
+            raise ValidationError(f"Invalid categories: {', '.join(invalid_categories)}")
+        
+        return value
+
+    def validate_location(self, value):
+        if not value:
+            raise ValidationError("Location is required")
+        return value
+
+    def validate_images(self, value):
+        if not isinstance(value, list):
+            raise ValidationError("Images must be a list")
+        
+        if len(value) > 5:
+            raise ValidationError("Maximum 5 images allowed")
+            
+        return value
