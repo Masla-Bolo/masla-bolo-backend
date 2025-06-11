@@ -123,6 +123,9 @@ class MyApiOfficial(models.Model):
                 self.area_range = Polygon(coordinates)
 
         super().save(*args, **kwargs)
+        if self.area_range:
+            issues_in_area = Issue.objects.filter(location__within=self.area_range)
+            self.assigned_issues.set(issues_in_area)
 
 
 class Issue(models.Model):
@@ -197,6 +200,12 @@ class Issue(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["likes_count"]),
+            models.Index(fields=["comments_count"]),
+            models.Index(fields=["issue_status"]),
+        ]
 
     def __str__(self):
         return self.title
@@ -218,8 +227,10 @@ class Issue(models.Model):
             raise ValidationError("At least one category must be selected.")
 
         valid_categories = [choice[1] for choice in self.CATEGORY_CHOICES]
+        print(self.categories)
         for category in self.categories:
             if category not in valid_categories:
+                # print(category, valid_categories)
                 raise ValidationError(f"Invalid category: {category}")
 
     def save(self, *args, **kwargs):
@@ -252,6 +263,12 @@ class Comment(models.Model):
 
     class Meta:
         ordering = ["-likes_count"]  # order comments by likes_count by default
+        indexes = [
+            models.Index(fields=["issue"]),
+            models.Index(fields=["parent"]),
+            models.Index(fields=["likes_count"]),
+            models.Index(fields=["created_at"]),
+        ]
 
     def __str__(self):
         return f"Comment by {self.user.username} on {self.issue.title}"
@@ -263,7 +280,7 @@ class Like(models.Model):
         Issue, on_delete=models.CASCADE, null=True, blank=True, related_name="likes"
     )
     comment = models.ForeignKey(
-        Comment, on_delete=models.CASCADE, null=True, blank=True, related_name="likes"
+        Comment, on_delete=models.CASCADE, null=True, blank=True, related_name="comments"
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
