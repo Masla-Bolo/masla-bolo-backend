@@ -24,13 +24,61 @@ from .common import (
     status,
     time,
     viewsets,
+    Response,
+    requests,
+    GEOSGeometry,
+    OSMPolygonExtractor,
+    Polygon,
+    MultiPolygon,
+    get_emergency_contact,
+    # CustomPageNumberPagination,
 )
+from django.core.cache import cache
+from django.conf import settings
+from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
+
+
+# class IssueRateThrottle(UserRateThrottle):
+#     rate = '100/hour'
+
+# class IssueAnonRateThrottle(AnonRateThrottle):
+#     rate = '20/hour'
 
 
 class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
+    """
+    ViewSet for managing issues in the system.
+    
+    list:
+    Return a list of all issues.
+    Query Parameters:
+    - issue_status: Filter by issue status
+    - categories: Filter by categories (comma-separated)
+    - search: Search in title and description
+    - ordering: Order by created_at, likes_count, comments_count, or title
+    
+    create:
+    Create a new issue.
+    Required fields: title, description, categories, location
+    Optional fields: images, is_anonymous
+    
+    retrieve:
+    Get details of a specific issue.
+    
+    update:
+    Update all fields of an existing issue.
+    
+    partial_update:
+    Update specific fields of an existing issue.
+    
+    destroy:
+    Delete an issue.
+    """
+    
     queryset = Issue.objects.all()
     serializer_class = IssueSerializer
     permission_classes = [IsAuthenticated]
+    # throttle_classes = [IssueRateThrottle, IssueAnonRateThrottle]
     filterset_fields = ["issue_status"]
     filter_backends = [
         DjangoFilterBackend,
@@ -40,6 +88,10 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     search_fields = ["title", "description"]
     ordering_fields = ["created_at", "likes_count", "comments_count", "title"]
     ordering = ["-created_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.osm_extractor = OSMPolygonExtractor()
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -65,7 +117,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             "update": [IsUser, IsAdmin],
             "partial_update": [IsUser],
             "destroy": [IsAdmin, IsUser],
-            "complete": [IsAdmin, IsUser],
+            "complete": [IsUser],
             "approve": [IsAdmin],
         }
 
@@ -172,7 +224,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             status_code=status.HTTP_200_OK,
         )
 
-    @action(detail=True, methods=["patch"])
+    @action(detail=True, methods=["patch"], permission_classes=[IsUser])
     def complete(self, request, pk=None):
         issue = self.get_object()
 
@@ -185,7 +237,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             )
 
         # if issue is_approved
-        if issue.issue_status != Issue.APPROVED:
+        if issue.issue_status == Issue.NOT_APPROVED:
             return self.error_response(
                 message="Issue is not approved, cannot be marked as complete",
                 data="Issue Not Approved",
@@ -194,11 +246,13 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
 
         issue.issue_status = Issue.SOLVED
         issue.save()
+        serializer = self.get_serializer(issue)
         return self.success_response(
             message="Issue marked as complete",
-            data=issue,
+            data=serializer.data,
             status_code=status.HTTP_200_OK,
         )
+
 
     def create(self, request, *args, **kwargs):
         # pprint(request.data)
@@ -256,6 +310,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        print(instance.user, request.user)
         if request.user == instance.user or request.user.role == MyApiUser.ADMIN:
             self.perform_destroy(instance)
             return self.success_response(
@@ -265,7 +320,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             )
         return self.error_response(
             message="You do not have permission to delete this issue",
-            data="PermissionError",
+            data={"detali": "PermissionError"},
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
@@ -301,6 +356,69 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             data={"likes_count": issue.likes_count},
             status_code=status.HTTP_200_OK,
         )
+    
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
+    def nearby(self, request):
+        """
+        Get issues near a specific location.
+        
+        Query Parameters:
+        - latitude: Latitude of the location (required)
+        - longitude: Longitude of the location (required)
+        - distance: Search radius in meters (default: 1000)
+        
+        Returns:
+        - List of issues within the specified radius, ordered by distance
+        """
+        try:
+            latitude = float(request.query_params.get("latitude"))
+            longitude = float(request.query_params.get("longitude"))
+            distance = float(request.query_params.get("distance", 1000))  # in meters
+        except (TypeError, ValueError):
+            return self.error_response(
+                message="Invalid or missing latitude/longitude.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create a cache key based on location and distance
+        cache_key = f"nearby_issues_{latitude}_{longitude}_{distance}"
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return self.success_response(
+                message="Nearby issues fetched successfully (cached)",
+                data=cached_data,
+                status_code=status.HTTP_200_OK,
+            )
+
+        location = Point(longitude, latitude, srid=4326)
+        queryset = (
+            self.get_queryset()
+            .filter(location__distance_lte=(location, D(m=distance)))
+            .annotate(distance=Distance("location", location))
+            .order_by("distance")
+        )
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response_data = self.get_paginated_response(serializer.data).data
+            # Cache for 5 minutes
+            cache.set(cache_key, response_data, 300)
+            return self.success_response(
+                message="Nearby issues fetched successfully",
+                data=response_data,
+                status_code=status.HTTP_200_OK,
+            )
+
+        serializer = self.get_serializer(queryset, many=True)
+        response_data = serializer.data
+        cache.set(cache_key, response_data, 300)
+        return self.success_response(
+            message="Nearby issues fetched successfully (cached)",
+            data=response_data,
+            status_code=status.HTTP_200_OK,
+        )
 
     @action(detail=False, permission_classes=[IsAuthenticated])
     def liked_issues(self, request):
@@ -330,3 +448,248 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             data=serializer.data,
             status_code=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=["get"], url_path="in-area")
+    def issues_in_area(self, request):
+        """
+        Under development for more accurate area filtering.
+        Get all issues within a specified area using OpenStreetMap polygon data.
+
+        Query Parameters:
+        - area_name (required): Name of the area to search for
+        - area_type (optional): Type of area ('city', 'country', 'state', 'county', 'any')
+        - include_map (optional): Whether to generate a visualization map (true/false)
+        """
+        area_name = request.query_params.get("area_name")
+        area_type = request.query_params.get("area_type", "any")
+        include_map = request.query_params.get("include_map", "false").lower() == "true"
+
+        if not area_name:
+            return self.error_response(
+                message="Missing area_name parameter", 
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            polygon_data = self.osm_extractor.get_area_polygon(area_name, area_type)
+            
+            if not polygon_data or not polygon_data.get('polygon'):
+                return self.error_response(
+                    message=f"No polygon found for area '{area_name}'", 
+                    data={},
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+            # print(polygon_data)
+            geos_polygon = self._convert_to_geos_geometry(polygon_data)
+
+            if not geos_polygon:
+                return self.error_response(
+                    message="Failed to process polygon geometry", 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to fetch polygon: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        try:
+            issues_within = Issue.objects.filter(location__within=geos_polygon)
+            total_issues = issues_within.count()
+
+            map_file = None
+            if include_map and total_issues > 0:
+                try:
+                    map_file = self._generate_issues_map(polygon_data, issues_within, area_name)
+                except Exception:
+                    pass
+
+            page = self.paginate_queryset(issues_within)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                response_data = self.get_paginated_response(serializer.data).data
+            else:
+                serializer = self.get_serializer(issues_within, many=True)
+                response_data = serializer.data
+
+            area_info = {
+                "name": polygon_data['name'],
+                "osm_id": polygon_data['osm_id'],
+                "osm_type": polygon_data['type'],
+                "bounds": polygon_data['bounds'],
+                "polygon_count": len(polygon_data['polygon']),
+                "total_issues": total_issues
+            }
+
+            if map_file:
+                area_info["map_file"] = map_file
+
+            if isinstance(response_data, dict):
+                response_data.update({"area_info": area_info})
+            else:
+                response_data = {"issues": response_data, "area_info": area_info}
+
+            return self.success_response(
+                message="Issues in area fetched successfully",
+                data=response_data,
+                status_code=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to filter issues: {str(e)}", 
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    def _convert_to_geos_geometry(self, polygon_data):
+        """
+        Convert OSM polygon data to Django GEOSGeometry object.
+        """
+        try:
+            polygons = polygon_data['polygon']
+
+            if not polygons:
+                return None
+
+            geos_polygons = []
+
+            for polygon_coords in polygons:
+                if len(polygon_coords) < 3:
+                    continue
+
+                if polygon_coords[0] != polygon_coords[-1]:
+                    polygon_coords.append(polygon_coords[0])
+
+                polygon = Polygon(polygon_coords)
+                geos_polygons.append(polygon)
+
+            if not geos_polygons:
+                return None
+
+            return geos_polygons[0] if len(geos_polygons) == 1 else MultiPolygon(geos_polygons)
+
+        except Exception as e:
+            print(f"Error converting to GEOSGeometry: {e}")
+            return None
+
+
+    def _generate_issues_map(self, polygon_data, issues_queryset, area_name):
+        """
+        Generate a Folium map showing the area polygon and issues within it.
+        """
+        try:
+            from django.conf import settings
+            import os
+
+            safe_area_name = "".join(c for c in area_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            map_filename = f"{safe_area_name.replace(' ', '_')}_issues_map.html"
+            map_path = os.path.join(settings.MEDIA_ROOT, 'maps', map_filename)
+
+            os.makedirs(os.path.dirname(map_path), exist_ok=True)
+
+            folium_map = self.osm_extractor.visualize_on_map(
+                polygon_data, 
+                map_path,
+                popup_info=True,
+                fit_bounds=True
+            )
+
+            if not folium_map:
+                return None
+
+            import folium
+            from django.contrib.gis.geos import Point
+
+            issue_count = 0
+            for issue in issues_queryset[:100]:
+                if hasattr(issue, 'location') and issue.location:
+                    if isinstance(issue.location, Point):
+                        lat, lon = issue.location.y, issue.location.x
+                        popup_content = f"""
+                        <b>Issue #{issue.id}</b><br>
+                        <b>Title:</b> {getattr(issue, 'title', 'N/A')}<br>
+                        <b>Status:</b> {getattr(issue, 'status', 'N/A')}<br>
+                        <b>Priority:</b> {getattr(issue, 'priority', 'N/A')}<br>
+                        <b>Created:</b> {getattr(issue, 'created_at', 'N/A')}
+                        """
+                        marker_color = self._get_issue_marker_color(issue)
+                        folium.Marker(
+                            [lat, lon],
+                            popup=folium.Popup(popup_content, max_width=250),
+                            icon=folium.Icon(color=marker_color, icon='exclamation-sign'),
+                            tooltip=f"Issue #{issue.id}"
+                        ).add_to(folium_map)
+                        issue_count += 1
+
+            self._add_issues_legend(folium_map, issue_count, len(issues_queryset))
+            folium_map.save(map_path)
+
+            return f"maps/{map_filename}"
+
+        except Exception:
+            return None
+
+
+    def _get_issue_marker_color(self, issue):
+        """Determine marker color based on issue properties."""
+        try:
+            if hasattr(issue, 'priority'):
+                if issue.priority == 'high':
+                    return 'red'
+                elif issue.priority == 'medium':
+                    return 'orange'
+                else:
+                    return 'green'
+            elif hasattr(issue, 'status'):
+                if issue.status == 'open':
+                    return 'red'
+                elif issue.status == 'in_progress':
+                    return 'orange'
+                else:
+                    return 'green'
+            else:
+                return 'blue'
+        except:
+            return 'blue'
+
+
+    def _add_issues_legend(self, folium_map, displayed_count, total_count):
+        """Add a legend to the map showing issue information."""
+        try:
+            import folium
+
+            legend_html = f"""
+            <div style="position: fixed; 
+                        bottom: 50px; left: 50px; width: 200px; height: 90px; 
+                        background-color: white; border:2px solid grey; z-index:9999; 
+                        font-size:14px; padding: 10px">
+                <b>Issues Information</b><br>
+                <i class="fa fa-exclamation-sign" style="color:red"></i> High Priority<br>
+                <i class="fa fa-exclamation-sign" style="color:orange"></i> Medium Priority<br>
+                <i class="fa fa-exclamation-sign" style="color:green"></i> Low Priority<br>
+                <hr>
+                Showing: {displayed_count} of {total_count} issues
+            </div>
+            """
+            folium_map.get_root().html.add_child(folium.Element(legend_html))
+
+        except Exception:
+            pass
+
+    @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated], url_path="emergency-contact")
+    def get_emergency_contact(self, request, *args, **kwargs):
+        issue = self.get_object()
+        emergency_contact = get_emergency_contact(issue)
+        if emergency_contact:
+            return self.success_response(
+                message="Emergency contact fetched successfully",
+                data=emergency_contact,
+                status_code=status.HTTP_200_OK
+            )
+        else:
+            return self.error_response(
+                message="No emergency contact found for this issue",
+                status_code=status.HTTP_404_NOT_FOUND
+            )

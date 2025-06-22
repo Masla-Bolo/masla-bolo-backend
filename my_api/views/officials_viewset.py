@@ -21,7 +21,7 @@ class OfficialViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         action_permissions = {
             "list": [IsAdmin],
             "retrieve": [IsUser],
-            "create": [IsOfficial],
+            "create": [IsUser],
             "update": [IsAuthenticated],
             "partial_update": [IsAuthenticated],
             "destroy": [IsAuthenticated],

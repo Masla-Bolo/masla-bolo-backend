@@ -2,11 +2,14 @@ import random
 import time
 from datetime import timedelta
 from pprint import pprint
+import requests
 
 from django.conf import settings
 from django.contrib.auth.models import update_last_login
 from django.contrib.gis.db.models.functions import Distance
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import GEOSGeometry
+from django.contrib.gis.db.models.functions import Transform
+from django.contrib.gis.geos import Point, Polygon, MultiPolygon
 from django.contrib.gis.measure import D
 from django.core.mail import EmailMultiAlternatives
 from django.db import connection
@@ -37,6 +40,8 @@ from my_api.utils import (
     find_official_for_point,
     remove_keys_from_dict,
     send_push_notification,
+    OSMPolygonExtractor,
+    get_emergency_contact
 )
 
 from rest_framework import filters, generics, status, viewsets
