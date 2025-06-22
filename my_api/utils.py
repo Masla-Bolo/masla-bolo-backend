@@ -1,5 +1,6 @@
 import json
-from typing import Optional
+from typing import List, Dict, Optional, Tuple
+import folium
 
 import requests
 from firebase_admin import messaging
@@ -161,8 +162,6 @@ def get_district_boundary(district_name, city, country):
     # Nominatim API endpoint
     nominatim_url = "https://nominatim.openstreetmap.org/search"
 
-    # Parameters for the API request
-    # Adding specific parameters to target district-level boundaries
     params = {
         "q": search_query,
         "format": "json",
@@ -222,6 +221,43 @@ def get_district_boundary(district_name, city, country):
         print(f"Error: {e}")
         return None
 
+import requests
+from django.contrib.gis.geos import GEOSGeometry
+
+def get_polygon_from_area_name(area_name: str):
+    """
+    Fetches a polygon GEOSGeometry object from an area name using OpenStreetMap Nominatim API.
+
+    Parameters:
+        area_name (str): Name of the area to search for.
+
+    Returns:
+        tuple: (polygon: GEOSGeometry or None, error_message: str or None)
+    """
+    try:
+        nominatim_url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": area_name,
+            "format": "json",
+            "polygon_geojson": 1
+        }
+        headers = {"User-Agent": "issue-tracker-app"}
+
+        response = requests.get(nominatim_url, params=params, headers=headers)
+        data = response.json()
+
+        if not data or "geojson" not in data[0]:
+            return None, "Polygon not found for the given area."
+
+        geojson = data[0]["geojson"]
+        polygon = GEOSGeometry(str(geojson))
+
+        return polygon, None
+
+    except Exception as e:
+        return None, f"Error fetching polygon: {str(e)}"
+
+
 
 def remove_keys_from_dict(d: dict, keys: list):
     temp_dict = d
@@ -249,6 +285,222 @@ def get_coordinates_from_geojson(geojson: dict) -> Optional[list]:
     else:
         return None
     
+import requests
+
+CATEGORY_EMERGENCY_TAGS = {
+    "electric": [{"key": "power", "value": "substation"}],
+    "gas": [{"key": "man_made", "value": "gas_meter"}],
+    "water": [{"key": "man_made", "value": "water_works"}],
+    "waste": [{"key": "amenity", "value": "waste_disposal"}],
+    "sewerage": [{"key": "man_made", "value": "wastewater_plant"}],
+    "stormwater": [{"key": "man_made", "value": "storm_drain"}],
+    
+    "roads_potholes": [{"key": "highway", "value": "service"}],
+    "road_safety": [{"key": "highway", "value": "traffic_signals"}],
+    "street_lighting": [{"key": "highway", "value": "street_lamp"}],
+    "traffic_signals": [{"key": "highway", "value": "traffic_signals"}],
+    "parking_violations": [{"key": "amenity", "value": "parking"}],
+    "sidewalk_maintenance": [{"key": "footway", "value": "sidewalk"}],
+    
+    "public_transportation": [{"key": "public_transport", "value": "station"}],
+    "public_toilets": [{"key": "amenity", "value": "toilets"}],
+    "zoning_planning": [{"key": "office", "value": "government"}],
+    
+    "parks_recreation": [{"key": "leisure", "value": "park"}],
+    "tree_vegetation_issues": [{"key": "natural", "value": "tree"}],
+    "illegal_dumping": [{"key": "amenity", "value": "waste_disposal"}],
+    "noise_pollution": [{"key": "office", "value": "environment"}],
+    "environmental_hazards": [{"key": "man_made", "value": "pollution"}],
+    "air_quality": [{"key": "man_made", "value": "monitoring_station"}],
+    
+    "animal_control": [{"key": "office", "value": "government"}],
+    "building_safety": [{"key": "amenity", "value": "police"}],
+    "fire_safety": [{"key": "emergency", "value": "fire_station"}],
+    "public_health": [{"key": "amenity", "value": "hospital"}],
+    "public_safety": [{"key": "amenity", "value": "police"}],
+    "vandalism_graffiti": [{"key": "amenity", "value": "police"}],
+    
+    "other": [{"key": "office", "value": "government"}],
+}
+
+
+def get_emergency_contact(issue):
+    if not issue.location or not issue.categories:
+        return {"error": "Missing location or categories"}
+
+    lat, lon = issue.location.y, issue.location.x
+    category = issue.categories[0].lower()
+
+    tags = CATEGORY_EMERGENCY_TAGS.get(category)
+    if not tags:
+        return {"error": f"No emergency service mapped for category: {category}"}
+
+    for tag in tags:
+        query = f"""
+        [out:json];
+        node["{tag['key']}"="{tag['value']}"](around:5000,{lat},{lon});
+        out body 1;
+        """
+        response = requests.post("https://overpass-api.de/api/interpreter", data=query)
+        if response.status_code == 200:
+            data = response.json()
+            if data["elements"]:
+                el = data["elements"][0]
+                return {
+                    "name": el.get("tags", {}).get("name", "Unnamed Location"),
+                    "type": tag["value"],
+                    "address": el.get("tags", {}).get("addr:full", "N/A"),
+                    "coordinates": {"lat": el["lat"], "lon": el["lon"]}
+                }
+
+    return {"error": "No emergency services found nearby"}
+
+class OSMPolygonExtractor:
+    def __init__(self):
+        self.overpass_url = "http://overpass-api.de/api/interpreter"
+    
+    def get_area_polygon(self, area_name: str, area_type: str = "any") -> Optional[Dict]:
+        """
+        Get polygon coordinates for a named area from OpenStreetMap.
+        
+        Args:
+            area_name (str): Name of the area to search for
+            area_type (str): Type of area - 'city', 'country', 'state', 'county', or 'any'
+        
+        Returns:
+            Dict containing polygon data or None if not found
+        """
+        try:
+            # Build the Overpass query
+            query = self._build_query(area_name, area_type)
+            
+            # Make the API request
+            response = requests.post(
+                self.overpass_url,
+                data={'data': query},
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if not data.get('elements'):
+                print(f"No area found for '{area_name}'")
+                return None
+            
+            # Process the response
+            return self._process_response(data, area_name)
+            
+        except requests.RequestException as e:
+            print(f"Request error: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return None
+    
+    def _build_query(self, area_name: str, area_type: str) -> str:
+        """Build Overpass QL query for the area."""
+        type_filters = {
+            'city': '["place"~"^(city|town|village)$"]',
+            'country': '["admin_level"="2"]',
+            'state': '["admin_level"~"^(3|4)$"]',
+            'county': '["admin_level"~"^(5|6)$"]',
+            'any': ''
+        }
+        
+        type_filter = type_filters.get(area_type, '')
+        
+        query = f"""
+        [out:json][timeout:25];
+        (
+          relation["name"="{area_name}"]{type_filter}["type"="boundary"];
+          way["name"="{area_name}"]{type_filter};
+        );
+        out geom;
+        """
+        
+        return query
+    
+    def _process_response(self, data: Dict, area_name: str) -> Dict:
+        """Process the Overpass API response."""
+        
+        elements = data['elements']
+        best_element = None
+        for element in elements:
+            if element.get('type') == 'relation':
+                best_element = element
+                break
+        
+        if not best_element and elements:
+            best_element = elements[0]
+        
+        if not best_element:
+            return None
+        
+        # Extract polygon coordinates
+        polygon_coords = self._extract_coordinates(best_element)
+        
+        result = {
+            'name': area_name,
+            'osm_id': best_element.get('id'),
+            'type': best_element.get('type'),
+            'tags': best_element.get('tags', {}),
+            'polygon': polygon_coords,
+            'bounds': self._calculate_bounds(polygon_coords) if polygon_coords else None
+        }
+        
+        return result
+    
+    def _extract_coordinates(self, element: Dict) -> List[List[Tuple[float, float]]]:
+        """Extract coordinates from OSM element."""
+        
+        if element.get('type') == 'way':
+            # Simple way - return single polygon
+            if 'geometry' in element:
+                coords = [(node['lon'], node['lat']) for node in element['geometry']]
+                return [coords] if coords else []
+        
+        elif element.get('type') == 'relation':
+            # Relation - can have multiple polygons (multipolygon)
+            polygons = []
+            
+            for member in element.get('members', []):
+                if member.get('type') == 'way' and 'geometry' in member:
+                    coords = [(node['lon'], node['lat']) for node in member['geometry']]
+                    if coords:
+                        polygons.append(coords)
+            
+            return polygons
+        
+        return []
+    
+    def _calculate_bounds(self, polygon_coords: List[List[Tuple[float, float]]]) -> Dict[str, float]:
+        """Calculate bounding box for the polygon."""
+        
+        if not polygon_coords:
+            return None
+        
+        all_coords = []
+        for polygon in polygon_coords:
+            all_coords.extend(polygon)
+        
+        if not all_coords:
+            return None
+        
+        lons = [coord[0] for coord in all_coords]
+        lats = [coord[1] for coord in all_coords]
+        
+        return {
+            'min_lon': min(lons),
+            'max_lon': max(lons),
+            'min_lat': min(lats),
+            'max_lat': max(lats)
+        }
+    
+
 # if __name__ == "__main__":
     # Example usage
     # district_name = "Nazimabad"
