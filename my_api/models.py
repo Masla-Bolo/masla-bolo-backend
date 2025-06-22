@@ -110,6 +110,10 @@ class MyApiOfficial(models.Model):
     country_code = models.CharField(max_length=3, editable=False)
 
     def save(self, *args, **kwargs):
+        if self.user.role != MyApiUser.OFFICIAL:
+            self.user.role = MyApiUser.OFFICIAL
+            self.user.save(update_fields=["role"])
+            
         # Automatically set the country code
         if self.country_name:
             self.country_code = self.country_name[:3].upper()

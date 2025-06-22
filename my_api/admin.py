@@ -1,5 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.urls import path
+from django.template.response import TemplateResponse
+from django.core.serializers import serialize
+from django.contrib.admin.views.decorators import staff_member_required
+from django.utils.decorators import method_decorator
 
 from leaflet.admin import LeafletGeoAdmin
 from unfold.admin import ModelAdmin
@@ -102,17 +107,17 @@ class MyApiOfficialAdmin(LeafletGeoAdmin, ModelAdmin):
                     "district_name",
                     "city_name",
                     "country_name",
-                    "country_code",
+                    # "country_code",
                 )
             },
         ),
     )
-    readonly_fields = (
-        "country_code",
-        "city_name",
-        "country_name",
-        "district_name",
-    )
+    # readonly_fields = (
+    #     "country_code",
+    #     "city_name",
+    #     "country_name",
+    #     "district_name",
+    # )
 
 
 class CustomAdminSite(UnfoldAdminSite):
@@ -124,6 +129,24 @@ class CustomAdminSite(UnfoldAdminSite):
         extra_context = extra_context or {}
         extra_context["custom_message"] = "Welcome to the custom dashboard!"
         return super().index(request, extra_context=extra_context)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path("issue-map/", self.admin_view(self.issue_map_view), name="issue_map"),
+        ]
+        return custom_urls + urls
+
+    @method_decorator(staff_member_required)
+    def issue_map_view(self, request):
+        issues_geojson = serialize("geojson", Issue.objects.all(), geometry_field="location", fields=("title", "description", "user"))
+        context = dict(
+            self.each_context(request),
+            title="Issue Locations Map",
+            issues_geojson=issues_geojson,
+        )
+        return TemplateResponse(request, "admin/issue_map.html", context)
+
 
 
 custom_admin_site = CustomAdminSite(name="custom_admin")
