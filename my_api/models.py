@@ -10,9 +10,11 @@ from django.contrib.gis.geos import Polygon
 from django.db import models
 from django.utils import timezone
 
-from jsonschema import ValidationError
+# from jsonschema import ValidationError
+from django.core.exceptions import ValidationError
 
-from .utils import get_district_boundary
+
+from .utils import get_district_boundary, send_push_notification
 
 
 class MyApiUserManager(BaseUserManager):
@@ -98,10 +100,10 @@ class MyApiUser(AbstractBaseUser, PermissionsMixin):
 
 class MyApiOfficial(models.Model):
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="user"
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="official_profile"
     )
     assigned_issues = models.ManyToManyField(
-        "Issue", blank=True, related_name="officials"
+        "Issue", blank=True, related_name="official_issues"
     )
     area_range = gis_models.PolygonField(default="POLYGON((0 0, 0 0, 0 0, 0 0, 0 0))")
     city_name = models.CharField(max_length=150, null=True, blank=True)
@@ -114,11 +116,9 @@ class MyApiOfficial(models.Model):
             self.user.role = MyApiUser.OFFICIAL
             self.user.save(update_fields=["role"])
             
-        # Automatically set the country code
         if self.country_name:
             self.country_code = self.country_name[:3].upper()
 
-        # Fetch and set area_range using district, city, and country information
         if self.city_name and self.country_name:
             coordinates = get_district_boundary(
                 self.district_name, self.city_name, self.country_name
@@ -131,13 +131,34 @@ class MyApiOfficial(models.Model):
             issues_in_area = Issue.objects.filter(location__within=self.area_range)
             self.assigned_issues.set(issues_in_area)
 
+class AreaLocation(gis_models.Model):
+    name = models.CharField(max_length=255)
+    city_name = models.CharField(max_length=255)
+    country = models.CharField(max_length=255, default="Unknown")
+    boundary = gis_models.MultiPolygonField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.name}, {self.city_name}, {self.country}"
+
+    class Meta:
+        unique_together = ('name', 'city_name', 'country')
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['city_name']),
+            models.Index(fields=['country']),
+            gis_models.Index(fields=['boundary']),
+        ]
+
 
 class Issue(models.Model):
-    SOLVED = "solved"
-    APPROVED = "approved"
     NOT_APPROVED = "not_approved"
+    APPROVED = "approved"
     SOLVING = "solving"
     OFFICIAL_SOLVED = "official_solved"
+    SOLVED = "solved"
+    REJECTED = "rejected"
+    PENDING_USER_CONFIRMATION = "pending_user_confirmation"
+    REOPENED = "reopened"
 
     CATEGORY_CHOICES = [
         ("electric", "Electric"),
@@ -171,18 +192,25 @@ class Issue(models.Model):
     ]
 
     ISSUE_STATUS = [
-        (SOLVED, "Solved"),
-        (APPROVED, "Approved"),
         (NOT_APPROVED, "Not Approved"),
+        (APPROVED, "Approved"),
         (SOLVING, "Solving"),
         (OFFICIAL_SOLVED, "Official Solved"),
+        (SOLVED, "Solved"),
+        (REJECTED, "Rejected"),
+        (PENDING_USER_CONFIRMATION, "Pending User Confirmation"),
+        (REOPENED, "Reopened"),
     ]
 
-    allowed_changes = {
-        "not_approved": ["approved"],
-        "approved": ["solving", "official_solved"],
-        "solving": ["solved", "official_solved"],
-        "official_solved": ["solved"],
+    ALLOWED_STATUS_CHANGES = {
+        NOT_APPROVED: [APPROVED, REJECTED],
+        APPROVED: [SOLVING, REJECTED],
+        SOLVING: [OFFICIAL_SOLVED, REJECTED],
+        OFFICIAL_SOLVED: [PENDING_USER_CONFIRMATION],
+        PENDING_USER_CONFIRMATION: [SOLVED, REOPENED],
+        REOPENED: [SOLVING, REJECTED],
+        REJECTED: [],
+        SOLVED: [],
     }
 
     title = models.CharField(max_length=255)
@@ -192,7 +220,7 @@ class Issue(models.Model):
     categories = models.JSONField()
     images = models.JSONField()
     issue_status = models.CharField(
-        max_length=15,
+        max_length=30,
         choices=ISSUE_STATUS,
         default=NOT_APPROVED,
     )
@@ -201,6 +229,7 @@ class Issue(models.Model):
     comments_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+    area = models.ForeignKey(AreaLocation, null=True, blank=True, on_delete=models.SET_NULL)
 
     class Meta:
         ordering = ["-created_at"]
@@ -209,18 +238,93 @@ class Issue(models.Model):
             models.Index(fields=["likes_count"]),
             models.Index(fields=["comments_count"]),
             models.Index(fields=["issue_status"]),
+            models.Index(fields=["area"]),
+            gis_models.Index(fields=["location"]),
         ]
 
     def __str__(self):
         return self.title
 
     def change_status(self, new_status):
-        if new_status not in self.allowed_changes.get(self.issue_status, []):
+        # from .models import MyApiOfficial
+
+        old_status = self.issue_status
+        if new_status not in self.ALLOWED_STATUS_CHANGES.get(self.issue_status, []):
             raise ValidationError(
                 f"Cannot transition from {self.issue_status} to {new_status}."
             )
+
         self.issue_status = new_status
         self.save()
+
+        if new_status == self.APPROVED:
+            if self.location:
+                matching_officials = MyApiOfficial.objects.filter(area_range__covers=self.location)
+                for official in matching_officials:
+                    official.assigned_issues.add(self)
+
+        if new_status == self.OFFICIAL_SOLVED:
+            new_status = self.PENDING_USER_CONFIRMATION
+            if new_status in self.ALLOWED_STATUS_CHANGES.get(self.issue_status, []):
+                self.issue_status = new_status
+                self.save()
+
+        self._notify_user_on_status_change(old_status, new_status)
+        self._notify_official_on_status_change(old_status, new_status)
+
+
+    def _notify_user_on_status_change(self, old_status, new_status):
+        status_messages = {
+            "not_approved": "Your issue has been submitted and is awaiting admin approval.",
+            "approved": "Your issue has been approved and assigned to an official.",
+            "solving": "An official is currently working to resolve your issue.",
+            "official_solved": "The issue was marked as solved by the official. Please confirm.",
+            "solved": "You have confirmed the issue is resolved. Thank you!",
+            "rejected": "Your issue was rejected by the admin. Please review or raise again.",
+            "pending_user_confirmation": "The official has resolved the issue. Please confirm if it's solved.",
+            "reopened": "The issue has been reopened and will be addressed again.",
+        }
+        
+        description = status_messages.get(new_status, f"Issue status changed to '{new_status}'.")
+
+        notification = Notification.objects.create(
+            user=self.user,
+            screen="issueDetail",
+            screen_id=self.id,
+            title="Issue Status Updated",
+            description=description
+        )
+
+        if self.user.fcm_tokens:
+            send_push_notification(notification)
+
+    def _notify_official_on_status_change(self, old_status, new_status):
+        if new_status not in [self.APPROVED, self.SOLVED]:
+            return
+
+        officials = self.official_issues.all()
+        if not officials.exists():
+            return
+
+        if new_status == self.APPROVED:
+            title = "New Issue Assigned"
+            description = f"A new issue titled '{self.title}' has been approved and assigned to your area."
+        elif new_status == self.SOLVED:
+            title = "Issue Marked as Solved"
+            description = f"The user has confirmed the issue '{self.title}' is resolved."
+
+        for official in officials:
+            user = official.user
+            notification = Notification.objects.create(
+                user=user,
+                screen="issueDetail",
+                screen_id=self.id,
+                title=title,
+                description=description,
+            )
+
+            if user.fcm_tokens:
+                send_push_notification(notification)
 
     def clean(self):
         if (
