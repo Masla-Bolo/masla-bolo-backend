@@ -1,6 +1,7 @@
 import json
 from typing import List, Dict, Optional, Tuple
 import folium
+from django.contrib.gis.geos import Polygon, MultiPolygon
 
 import requests
 from firebase_admin import messaging
@@ -499,7 +500,177 @@ class OSMPolygonExtractor:
             'min_lat': min(lats),
             'max_lat': max(lats)
         }
+
+
+HEADERS = {
+    "User-Agent": "MyIssueApp (contact@yourdomain.com)",
+    "Accept-Language": "en"
+}
+
+
+def reverse_geocode(lat, lon):
+    """Reverse geocode to get area, city, and country from coordinates."""
+    url = "https://nominatim.openstreetmap.org/reverse"
+    params = {
+        "format": "json",
+        "lat": lat,
+        "lon": lon,
+        "zoom": 18,
+        "addressdetails": 1
+    }
+
+    try:
+        resp = requests.get(url, params=params, headers=HEADERS, timeout=10)
+        resp.raise_for_status()
+        address = resp.json().get("address", {})
+        # Optional: log full address for debugging
+        return {
+            "neighbourhood": address.get("neighbourhood"),
+            "suburb": address.get("suburb"),
+            "village": address.get("village"),
+            "town": address.get("town"),
+            "city": address.get("city"),
+            "municipality": address.get("municipality"),
+            "state_district": address.get("state_district"),
+            "county": address.get("county"),
+            "country": address.get("country") or "Unknown"
+        }
+    except Exception as e:
+        print(f"❌ Reverse geocode error at ({lat}, {lon}): {e}")
+        return {}
+
+
+
+def fetch_boundary_from_overpass(area_name):
+    """
+    Query Overpass API to fetch boundary (geometry) for a named area.
+    Supports: administrative boundaries, place-based polygons.
+    """
+    query = f"""
+    [out:json][timeout:30];
+    (
+      relation["name"="{area_name}"]["boundary"];
+      relation["name"="{area_name}"]["place"~"neighbourhood|suburb|quarter|locality|block"];
+      way["name"="{area_name}"]["boundary"];
+      way["name"="{area_name}"]["place"~"neighbourhood|suburb|quarter|locality|block"];
+    );
+    out geom;
+    """
+
+    try:
+        response = requests.post(
+            "https://overpass-api.de/api/interpreter",
+            data={"data": query},
+            headers={
+                "User-Agent": "MyIssueApp (contact@yourdomain.com)",
+                "Accept-Language": "en"
+            },
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        print(f"❌ Overpass error for {area_name}: {e}")
+        return None
+
+    polygons = []
+
+    for element in data.get("elements", []):
+        if "geometry" not in element:
+            continue
+
+        coords = [(pt["lon"], pt["lat"]) for pt in element["geometry"]]
+        if len(coords) >= 4 and coords[0] == coords[-1]:  # closed loop
+            try:
+                poly = Polygon(coords)
+                polygons.append(poly)
+            except Exception:
+                continue
+
+    if polygons:
+        return MultiPolygon(polygons)
+    return None
+
+
+def assign_area_names_to_issues():
+    import time
+    from my_api.models import Issue, AreaLocation
+    issues = Issue.objects.filter(location__isnull=False, area__isnull=True)
+
+    for issue in issues:
+        lat, lon = issue.location.y, issue.location.x
+        address = reverse_geocode(lat, lon)
+
+        town = (
+            address.get("suburb")
+            or address.get("neighbourhood")
+            or address.get("village")
+            or address.get("town")
+        )
+        city = (
+            address.get("city")
+            or address.get("municipality")
+            or address.get("state_district")
+            or address.get("county")
+        )
+        country = address.get("country") or "Unknown"
+
+        if not town:
+            print(f"⚠️ No town found for issue '{issue.title}' at ({lat}, {lon})")
+            continue
+
+        city = city or "Unknown"
+
+        area = AreaLocation.objects.filter(name=town, city_name=city, country=country).first()
+
+        if not area:
+            print(f"🌐 Fetching boundary for: {town}, {city}, {country}")
+            boundary = fetch_boundary_from_overpass(town)
+
+            if boundary:
+                area = AreaLocation.objects.create(
+                    name=town,
+                    city_name=city,
+                    country=country,
+                    boundary=boundary
+                )
+                print(f"✅ Created with boundary: {town}, {city}, {country}")
+            else:
+                area = AreaLocation.objects.create(
+                    name=town,
+                    city_name=city,
+                    country=country,
+                    boundary=None
+                )
+                print(f"⚠️ Created without boundary: {town}, {city}, {country}")
+
+        issue.area = area
+        issue.save(update_fields=["area"])
+        print(f"✔️ Assigned: Issue '{issue.title}' → {town}, {city}, {country}")
+
+        time.sleep(1)  # Respect rate limits
+
+
+def get_issue_counts_by_area():
+    from my_api.models import Issue
+    from django.db.models import Count
+    results = (
+        Issue.objects
+        .filter(area__isnull=False)
+        .values("area__name", "area__city_name")
+        .annotate(issue_count=Count("id"))
+        .order_by("-issue_count")
+    )
+
+    for row in results:
+        print(f"📍 {row['area__name']}, {row['area__city_name']} → 🧾 {row['issue_count']} issues")
     
+    return results
+
+# if __name__ == "__main__":
+    # populator = AreaLocationPopulator()
+    # populator.populate_city_areas("Karachi")
+    # assign_areas_to_issues()
 
 # if __name__ == "__main__":
     # Example usage
