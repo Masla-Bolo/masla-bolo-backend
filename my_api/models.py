@@ -131,6 +131,16 @@ class MyApiOfficial(models.Model):
             issues_in_area = Issue.objects.filter(location__within=self.area_range)
             self.assigned_issues.set(issues_in_area)
 
+    @property
+    def total_resolved(self):
+        return self.assigned_issues.filter(issue_status=Issue.SOLVED).count()
+
+    def resolved_issues_count(self):
+        return self.assigned_issues.filter(issue_status=Issue.SOLVED).count()
+    
+    def resolved_issues(self):
+        return self.assigned_issues.filter(issue_status=Issue.SOLVED)
+
 class AreaLocation(gis_models.Model):
     name = models.CharField(max_length=255)
     city_name = models.CharField(max_length=255)
