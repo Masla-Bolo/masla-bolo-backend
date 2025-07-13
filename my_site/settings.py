@@ -26,6 +26,8 @@ firebase_admin.initialize_app(cred)
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 AUTH_USER_MODEL = "my_api.MyApiUser"
 
 APPEND_SLASH = True
@@ -103,8 +105,8 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
-    "django.middleware.csrf.CsrfViewMiddleware",
+    # "corsheaders.middleware.CorsMiddleware",
+    # "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",

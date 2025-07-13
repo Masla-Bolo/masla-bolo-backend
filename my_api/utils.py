@@ -2,8 +2,11 @@ import json
 from typing import List, Dict, Optional, Tuple
 import folium
 from django.contrib.gis.geos import Polygon, MultiPolygon
+import requests
+from django.conf import settings
 
 import requests
+import re
 from firebase_admin import messaging
 
 from rest_framework import status
@@ -666,6 +669,89 @@ def get_issue_counts_by_area():
         print(f"📍 {row['area__name']}, {row['area__city_name']} → 🧾 {row['issue_count']} issues")
     
     return results
+
+# import os
+# import google.generativeai as genai
+# from django.conf import settings
+
+# genai.configure(api_key=settings.GEMINI_API_KEY)
+
+# def generate_emergency_contact_prompt(issue_type: str, city: str) -> str:
+#     return (
+#         f"You are helping to retrieve emergency contact info in Pakistan.\n"
+#         f"Provide the following:\n"
+#         f"1. Primary contact: official emergency service (email and phone) related to {issue_type} issues in {city}.\n"
+#         f"2. Secondary contact: contact number and email of the District Commissioner of {city}.\n"
+#         f"Return in a parsable JSON format like:\n"
+#         f"{{\n"
+#         f'  "primary_contact": {{"type": "...", "phone": "...", "email": "..." }},\n'
+#         f'  "secondary_contact": {{"type": "District Commissioner", "phone": "...", "email": "..." }}\n'
+#         f"}}"
+#     )
+
+
+def get_emergency_contact_info(issue_type, city, area):
+    if not all([issue_type, city, area]):
+        return {"error": "Missing required parameters: issue_type, city, or area"}
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.GEMINI_API_KEY}"
+    headers = {"Content-Type": "application/json"}
+    
+    prompt = (
+        f"You are an emergency information assistant for {city}. "
+        f"Provide ONLY valid JSON with emergency contacts for {issue_type} issues in {area}, {city}.\n\n"
+        "Structure:\n"
+        "{\n"
+        '  "primary_contact": {"type": "Service Name", "phone": "number", "email": "address"},\n'
+        '  "secondary_contact": {"type": "District Commissioner", "phone": "number", "email": "address"}\n'
+        "}\n\n"
+        "Rules:\n"
+        "- Phone numbers best be in +9XXXXXXXXXXX format or 021XXXXXXXX\n"
+        "- Respond ONLY with valid JSON, no additional text\n"
+        "- If information is unavailable, give the general emergency info for the city"
+    )
+
+    data = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "response_mime_type": "application/json",
+            "temperature": 0.3
+        }
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=15)
+        response.raise_for_status()
+        
+        content = response.json()
+        if "candidates" not in content or not content["candidates"]:
+            return {"error": "No response from Gemini API"}
+        
+        raw_text = content["candidates"][0]["content"]["parts"][0]["text"]
+        
+        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        if not json_match:
+            return {"error": "No JSON found in response", "response": raw_text}
+        
+        json_text = json_match.group(0)
+        result = json.loads(json_text)
+        
+        required_keys = {"primary_contact", "secondary_contact"}
+        if not all(key in result for key in required_keys):
+            return {"error": "Invalid response structure", "response": result}
+        
+        return result
+
+    except requests.exceptions.RequestException as e:
+        return {"error": "API request failed", "details": str(e)}
+    except json.JSONDecodeError:
+        return {"error": "Invalid JSON response", "response": raw_text}
+    except KeyError as e:
+        return {"error": f"Missing key in response: {str(e)}", "response": content}
+    except Exception as e:
+        return {"error": "Unexpected error", "details": str(e)}
+
+
 
 # if __name__ == "__main__":
     # populator = AreaLocationPopulator()
