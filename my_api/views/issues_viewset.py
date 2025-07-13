@@ -29,6 +29,7 @@ from .common import (
     reverse_geocode,
     fetch_boundary_from_overpass,
     send_push_notification,
+    get_emergency_contact_info,
     status,
     time,
     viewsets,
@@ -134,7 +135,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     def list(self, request, *args, **kwargs):
         start_time = time.time()
 
-        # Build a unique cache key using user, query params, and view name
         user_id = request.user.id if request.user.is_authenticated else "anon"
         raw_key = f"issue_list:{user_id}:{json.dumps(request.query_params.dict(), sort_keys=True)}"
         cache_key = "issue_list:" + hashlib.md5(raw_key.encode()).hexdigest()
@@ -147,7 +147,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
                 status_code=status.HTTP_200_OK,
             )
 
-        # Cache miss → Run the query
         queryset = self.filter_queryset(self.get_queryset())
         query_time = time.time() - start_time
         print(f"Query time: {query_time}")
@@ -162,7 +161,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             paginated_data = self.get_paginated_response(serializer.data).data
             print(f"Number of queries: {len(connection.queries)}")
 
-            cache.set(cache_key, paginated_data, timeout=300)
+            cache.set(cache_key, paginated_data, timeout=180)
 
             return self.success_response(
                 message="Fetched Successfully!!",
@@ -247,9 +246,26 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
+
+        city = instance.area.city_name if instance.area else "Unknown"
+        area_name = instance.area.name if instance.area else "Unknown"
+        primary_category = instance.categories[0] if instance.categories else "public safety"
+        
+        cache_key = f"emergency_contact_{primary_category}_{city}_{area_name}".lower()
+        
+        emergency_contact = cache.get(cache_key)
+        
+        if emergency_contact is None:
+            emergency_contact = get_emergency_contact_info(primary_category, city, area_name)
+            # timeout = getattr(settings, 'EMERGENCY_CONTACT_CACHE_TIMEOUT', 3600)
+            cache.set(cache_key, emergency_contact, timeout=3600)
+
+        response_data = serializer.data
+        response_data["emergency_contact"] = emergency_contact
+
         return self.success_response(
-            message="Retrival Successful!",
-            data=serializer.data,
+            message="Retrieval successful!",
+            data=response_data,
             status_code=status.HTTP_200_OK,
         )
 
@@ -257,7 +273,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
     def complete(self, request, pk=None):
         issue = self.get_object()
 
-        # If user is_created
         if request.user != issue.user or request.user.role != MyApiUser.USER:
             return self.error_response(
                 message="Only the issue creator can mark this issue as complete",
@@ -265,7 +280,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
                 status_code=status.HTTP_403_FORBIDDEN,
             )
 
-        # if issue is_approved
         if issue.issue_status == Issue.NOT_APPROVED:
             return self.error_response(
                 message="Issue is not approved, cannot be marked as complete",
@@ -326,7 +340,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
                     message="Only admin can change issue to this status",
                     status_code=status.HTTP_403_FORBIDDEN,
                 )
-
         try:
             issue.change_status(new_status)
         except ValidationError as e:
@@ -508,7 +521,6 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Create a cache key based on location and distance
         cache_key = f"nearby_issues_{latitude}_{longitude}_{distance}"
         cached_data = cache.get(cache_key)
         
@@ -546,6 +558,60 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             message="Nearby issues fetched successfully (cached)",
             data=response_data,
             status_code=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=['get'], url_path='locations')
+    def issue_locations(self, request):
+        """
+        Custom endpoint to retrieve issue titles and locations
+        Query Parameters:
+        - status: Filter by issue status (comma-separated)
+        - category: Filter by category (use the %26 for '&' character)
+        - bbox: Filter by bounding box (min_lon,min_lat,max_lon,max_lat)
+        """
+        queryset = self.filter_queryset(self.get_queryset()).exclude(location__isnull=True)
+        
+        statuses = request.query_params.getlist('status', [])
+        category = request.query_params.get('category')
+        bbox = request.query_params.get('bbox')
+
+        if bbox:
+            try:
+                coords = [float(c) for c in bbox.split(',')]
+                if len(coords) != 4:
+                    raise ValueError
+                polygon = Polygon.from_bbox(coords)
+                queryset = queryset.filter(location__contained=polygon)
+            except (ValueError, TypeError):
+                return self.error_response(
+                    message="Invalid bbox format. Use min_lon,min_lat,max_lon,max_lat",
+                    status_code=400
+                )
+        
+        if statuses:
+            status_list = [s.strip() for s in statuses[0].split(',') if s.strip()]
+            queryset = queryset.filter(issue_status__in=status_list)
+        
+        if category:
+            # print(category)
+            queryset = queryset.filter(categories__contains=[category])
+        
+        
+        locations = queryset.values('id', 'title', 'location', 'issue_status')
+        
+        data = [
+            {   "id": item['id'],
+                "title": item['title'],
+                "status": item['issue_status'],
+                "coordinates": [item['location'].x, item['location'].y]
+            }
+            for item in locations
+        ]
+        
+        return self.success_response(
+            message="Locations retrieved successfully",
+            data=data,
+            status_code=200
         )
 
     @action(detail=False, permission_classes=[IsAuthenticated])
