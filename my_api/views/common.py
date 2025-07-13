@@ -45,7 +45,8 @@ from my_api.utils import (
     OSMPolygonExtractor,
     get_emergency_contact,
     reverse_geocode,
-    fetch_boundary_from_overpass
+    fetch_boundary_from_overpass,
+    get_emergency_contact_info
 )
 
 from rest_framework import filters, generics, status, viewsets
