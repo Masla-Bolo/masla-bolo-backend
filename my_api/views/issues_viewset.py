@@ -472,17 +472,19 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         like, created = Like.objects.get_or_create(user=user, issue=issue)
         serializer = self.get_serializer(issue).data
 
-        Notification.objects.create(
-            user=user,
-            screen="issueDetail",
-            screen_id=serializer["id"],
-            title="Issue Liked",
-            description="Issue Description",
-        )
-
         if created:
             issue.likes_count += 1
             issue.save()
+            notification = Notification.objects.create(
+                user=issue.user,
+                screen="issueDetail",
+                screen_id=serializer["id"],
+                title="Issue Liked",
+                description=f"User {user.username} raised {issue.title}",
+            )
+            if issue.user.fcm_tokens:
+                send_push_notification(notification)
+
             return self.success_response(
                 message="Issue liked",
                 data={"likes_count": issue.likes_count},

@@ -9,6 +9,7 @@ from django.contrib.gis.db import models as gis_models
 from django.contrib.gis.geos import Polygon
 from django.db import models
 from django.utils import timezone
+from django.contrib.gis.measure import D
 
 # from jsonschema import ValidationError
 from django.core.exceptions import ValidationError
@@ -219,7 +220,7 @@ class Issue(models.Model):
         OFFICIAL_SOLVED: [PENDING_USER_CONFIRMATION],
         PENDING_USER_CONFIRMATION: [SOLVED, REOPENED],
         REOPENED: [SOLVING, REJECTED],
-        REJECTED: [],
+        REJECTED: [APPROVED],
         SOLVED: [],
     }
 
@@ -272,6 +273,20 @@ class Issue(models.Model):
                 matching_officials = MyApiOfficial.objects.filter(area_range__covers=self.location)
                 for official in matching_officials:
                     official.assigned_issues.add(self)
+                nearby_users = MyApiUser.objects.filter(
+                    location__distance_lte=(self.location, D(m=500))
+                ).exclude(id=self.user.id)
+
+                for user in nearby_users:
+                    notification = Notification.objects.create(
+                        user=user,
+                        screen="issueDetail",
+                        screen_id=self.id,
+                        title="Nearby Issue Reported",
+                        description=f"A new issue titled '{self.title}' has been reported near your area.",
+                    )
+                    if user.fcm_tokens:
+                        send_push_notification(notification)
 
         if new_status == self.OFFICIAL_SOLVED:
             new_status = self.PENDING_USER_CONFIRMATION
