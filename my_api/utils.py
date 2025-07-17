@@ -1,6 +1,6 @@
 import json
 from typing import List, Dict, Optional, Tuple
-import folium
+import firebase_admin
 from django.contrib.gis.geos import Polygon, MultiPolygon
 import requests
 from django.conf import settings
@@ -8,6 +8,7 @@ from django.conf import settings
 import requests
 import re
 from firebase_admin import messaging
+from firebase_admin import credentials
 
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
@@ -99,6 +100,10 @@ def custom_exception_handler(exc, context):
 
 
 def send_push_notification(notification):
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(settings.FIREBASE_SERVICE)
+        firebase_admin.initialize_app(cred)
+
     data_payload = {
         "screen": str(notification.screen),
         "screen_id": str(notification.screen_id),

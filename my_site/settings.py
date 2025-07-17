@@ -14,12 +14,12 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-import firebase_admin
+# import firebase_admin
 from dotenv import load_dotenv
-from firebase_admin import credentials
+# from firebase_admin import credentials
 
-cred = credentials.Certificate("./service_account.json")
-firebase_admin.initialize_app(cred)
+# cred = credentials.Certificate("./service_account.json")
+# firebase_admin.initialize_app(cred)
 
 
 # Load environment variables from .env file
@@ -27,6 +27,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+FIREBASE_SERVICE= "./service_account.json"
 
 AUTH_USER_MODEL = "my_api.MyApiUser"
 
@@ -49,7 +51,7 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # }
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 GDAL_LIBRARY_PATH = os.getenv("gdal_path")
 GEOS_LIBRARY_PATH = os.getenv("geos_path")
@@ -92,10 +94,10 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=14 * 24 * 60),  # 14 days
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
