@@ -23,7 +23,7 @@ class MyApiUserManager(BaseUserManager):
         self,
         email,
         username,
-        location,
+        location=None,
         role="user",
         password=None,
         verified=False,

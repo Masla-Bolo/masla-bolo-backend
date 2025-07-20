@@ -1,3 +1,4 @@
+import json
 from .common import (
     APIView,
     EmailMultiAlternatives,
@@ -53,15 +54,15 @@ class SocialRegisterView(generics.CreateAPIView, StandardResponseMixin):
         email = request.data.get("email")
         user = MyApiUser.objects.filter(email=email)
 
-        if user or not user.is_social:
+        if user and not user.is_social:
             return self.error_response(
                 message="User with this email already exists!",
                 data={},
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
-
+        
         # existing_user = MyApiUser.objects.filter(email=email, is_social=True).first()
-        if user.is_social:
+        if user and user.is_social:
             refresh = RefreshToken.for_user(user)
             return self.success_response(
                 message="User already exists, returning existing user.",
@@ -71,6 +72,7 @@ class SocialRegisterView(generics.CreateAPIView, StandardResponseMixin):
                 },
                 status_code=status.HTTP_200_OK,
             )
+
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
