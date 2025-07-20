@@ -571,6 +571,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
         - category: Filter by category (use the %26 for '&' character)
         - bbox: Filter by bounding box (min_lon,min_lat,max_lon,max_lat)
         """
+        print("HELLO REQUEST REACHED")
         queryset = self.filter_queryset(self.get_queryset()).exclude(location__isnull=True)
         
         statuses = request.query_params.getlist('status', [])
@@ -610,6 +611,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             for item in locations
         ]
         
+        print(f"Data: {data}")
         return self.success_response(
             message="Locations retrieved successfully",
             data=data,
