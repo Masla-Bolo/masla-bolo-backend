@@ -123,7 +123,7 @@ class IssueViewSet(viewsets.ModelViewSet, StandardResponseMixin):
             "retrieve": [IsAuthenticated],
             "create": [IsUser],
             "update": [IsUser, IsAdmin],
-            "partial_update": [IsUser],
+            "partial_update": [IsAuthenticated],
             "destroy": [IsAdmin, IsUser],
             "complete": [IsUser],
             "approve": [IsAdmin],
